@@ -21,10 +21,11 @@ export function startBackend(): void {
   }
 
   // Dev: run the project through the dotnet CLI.
+  // No shell: the args array keeps paths with spaces intact and dotnet
+  // resolves to dotnet.exe on Windows without it.
   const projectPath = path.resolve(__dirname, '../../../backend/CodeCanvas.LocalServer');
   backend = spawn('dotnet', ['run', '--project', projectPath, '--urls', url], {
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   });
 }
 
