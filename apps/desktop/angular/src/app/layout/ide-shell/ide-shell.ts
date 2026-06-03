@@ -8,12 +8,13 @@ import {
   lucideSettings,
   lucideBot,
 } from '@ng-icons/lucide';
+import { BackendStatus } from '../../features/backend-status/backend-status';
 
 type Pane = 'left' | 'right' | 'bottom';
 
 @Component({
   selector: 'app-ide-shell',
-  imports: [NgIcon],
+  imports: [NgIcon, BackendStatus],
   viewProviders: [
     provideIcons({
       lucideFolderTree,
