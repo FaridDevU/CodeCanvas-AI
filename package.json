@@ -1,0 +1,20 @@
+{
+  "name": "codecanvas-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Desktop IDE for frontend developers: code editor, live preview, terminal and AI assistant.",
+  "scripts": {
+    "dev": "concurrently -k -n web,app -c cyan,green \"npm:dev:web\" \"npm:dev:app\"",
+    "dev:web": "npm --prefix apps/desktop/angular run start",
+    "dev:app": "wait-on http-get://localhost:4200 && npm --prefix apps/desktop/electron run start",
+    "install:all": "npm install && npm --prefix apps/desktop/angular install && npm --prefix apps/desktop/electron install",
+    "build:web": "npm --prefix apps/desktop/angular run build",
+    "build:app": "npm --prefix apps/desktop/electron run build",
+    "test:web": "npm --prefix apps/desktop/angular run test -- --watch=false",
+    "test:backend": "dotnet test apps/backend/CodeCanvas.slnx"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "wait-on": "^8.0.4"
+  }
+}
