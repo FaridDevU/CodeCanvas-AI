@@ -4,13 +4,11 @@ import {
   lucideFiles,
   lucideSearch,
   lucideGitBranch,
-  lucideSparkles,
   lucideSettings,
   lucideSquareCode,
   lucideFilePlus,
   lucideFolderPlus,
   lucideRefreshCw,
-  lucideEllipsis,
   lucideX,
   lucideFileCode,
   lucideMousePointerClick,
@@ -21,8 +19,8 @@ import {
 } from '@ng-icons/lucide';
 import { BackendStatus } from '../../features/backend-status/backend-status';
 
-type Pane = 'left' | 'right' | 'bottom';
-type View = 'explorer' | 'search' | 'git' | 'chat';
+type Pane = 'left' | 'bottom';
+type View = 'explorer' | 'search' | 'git';
 
 interface RailItem {
   id: View;
@@ -38,13 +36,11 @@ interface RailItem {
       lucideFiles,
       lucideSearch,
       lucideGitBranch,
-      lucideSparkles,
       lucideSettings,
       lucideSquareCode,
       lucideFilePlus,
       lucideFolderPlus,
       lucideRefreshCw,
-      lucideEllipsis,
       lucideX,
       lucideFileCode,
       lucideMousePointerClick,
@@ -61,13 +57,11 @@ export class IdeShell {
     { id: 'explorer', icon: 'lucideFiles', label: 'Explorador' },
     { id: 'search', icon: 'lucideSearch', label: 'Buscar' },
     { id: 'git', icon: 'lucideGitBranch', label: 'Control de versiones' },
-    { id: 'chat', icon: 'lucideSparkles', label: 'Chat IA' },
   ];
 
   readonly activeView = signal<View>('explorer');
 
   readonly leftWidth = signal(248);
-  readonly rightWidth = signal(340);
   readonly bottomHeight = signal(200);
 
   private active: Pane | null = null;
@@ -81,12 +75,7 @@ export class IdeShell {
   startResize(pane: Pane, event: PointerEvent): void {
     this.active = pane;
     this.startPos = pane === 'bottom' ? event.clientY : event.clientX;
-    this.startSize =
-      pane === 'left'
-        ? this.leftWidth()
-        : pane === 'right'
-          ? this.rightWidth()
-          : this.bottomHeight();
+    this.startSize = pane === 'left' ? this.leftWidth() : this.bottomHeight();
     window.addEventListener('pointermove', this.onMove);
     window.addEventListener('pointerup', this.onUp);
     event.preventDefault();
@@ -98,8 +87,6 @@ export class IdeShell {
     }
     if (this.active === 'left') {
       this.leftWidth.set(this.clamp(this.startSize + (event.clientX - this.startPos), 180, 480));
-    } else if (this.active === 'right') {
-      this.rightWidth.set(this.clamp(this.startSize + (this.startPos - event.clientX), 260, 560));
     } else {
       this.bottomHeight.set(this.clamp(this.startSize + (this.startPos - event.clientY), 120, 480));
     }
