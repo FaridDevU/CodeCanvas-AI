@@ -1,0 +1,42 @@
+# === Documentos de planificación (NO se versionan) ===
+Instrucciones AI/
+PROYECTO_CodeCanvas_AI.md
+
+# === Librerías de terceros descargadas como referencia local ===
+# Monaco y el wrapper se consumen vía npm, no se versiona el repo fuente.
+Proyecto/
+
+# === Node / Angular ===
+node_modules/
+dist/
+.angular/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# === .NET ===
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# === Electron / empaquetado ===
+out/
+release/
+app/dist/
+
+# === Entorno y secretos ===
+.env
+.env.*
+!.env.example
+
+# === Sistema operativo / editores ===
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
