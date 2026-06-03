@@ -1,40 +1,40 @@
-<div class="flex flex-col gap-3 p-3">
+<div class="flex flex-col gap-3">
   <button
     type="button"
-    class="flex items-center justify-center gap-2 rounded bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+    class="flex items-center justify-center gap-2 rounded-md bg-brand px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-brand/90 disabled:opacity-50"
     [disabled]="status() === 'loading'"
     (click)="check()"
   >
     <ng-icon
       [name]="status() === 'loading' ? 'lucideLoaderCircle' : 'lucidePlug'"
       [class.animate-spin]="status() === 'loading'"
-      size="16"
+      size="15"
     />
     Probar backend
   </button>
 
   @if (status() === 'ok' && result(); as r) {
-    <div class="rounded border border-emerald-700 bg-emerald-950/40 p-3 text-sm">
-      <div class="mb-1 flex items-center gap-2 font-medium text-emerald-400">
-        <ng-icon name="lucideCircleCheck" size="16" />
+    <div class="rounded-md border border-line bg-raised/60 p-3 text-[12px]">
+      <div class="mb-2 flex items-center gap-1.5 font-medium text-emerald-400">
+        <ng-icon name="lucideCircleCheck" size="15" />
         Backend conectado
       </div>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-neutral-300">
-        <dt class="text-neutral-500">status</dt>
-        <dd>{{ r.status }}</dd>
-        <dt class="text-neutral-500">service</dt>
-        <dd>{{ r.service }}</dd>
-        <dt class="text-neutral-500">version</dt>
-        <dd>{{ r.version }}</dd>
-        <dt class="text-neutral-500">utcTime</dt>
-        <dd>{{ r.utcTime }}</dd>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt class="text-dim">status</dt>
+        <dd class="font-mono">{{ r.status }}</dd>
+        <dt class="text-dim">service</dt>
+        <dd class="font-mono">{{ r.service }}</dd>
+        <dt class="text-dim">version</dt>
+        <dd class="font-mono">{{ r.version }}</dd>
+        <dt class="text-dim">utcTime</dt>
+        <dd class="truncate font-mono">{{ r.utcTime }}</dd>
       </dl>
     </div>
   }
 
   @if (status() === 'error') {
-    <div class="flex items-center gap-2 rounded border border-red-700 bg-red-950/40 p-3 text-sm text-red-400">
-      <ng-icon name="lucideCircleX" size="16" />
+    <div class="flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-[12px] text-red-400">
+      <ng-icon name="lucideCircleX" size="15" />
       {{ error() }}
     </div>
   }

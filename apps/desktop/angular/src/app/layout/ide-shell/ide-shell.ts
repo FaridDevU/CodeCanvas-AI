@@ -1,40 +1,82 @@
 import { Component, signal } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  lucideFolderTree,
-  lucideCode,
-  lucideMonitor,
-  lucideTerminal,
+  lucideFiles,
+  lucideSearch,
+  lucideGitBranch,
+  lucideSparkles,
   lucideSettings,
-  lucideBot,
+  lucideSquareCode,
+  lucideFilePlus,
+  lucideFolderPlus,
+  lucideRefreshCw,
+  lucideEllipsis,
+  lucideX,
+  lucideFileCode,
+  lucideMousePointerClick,
+  lucideTerminal,
+  lucidePlus,
+  lucideTrash2,
+  lucideChevronDown,
 } from '@ng-icons/lucide';
 import { BackendStatus } from '../../features/backend-status/backend-status';
 
 type Pane = 'left' | 'right' | 'bottom';
+type View = 'explorer' | 'search' | 'git' | 'chat';
+
+interface RailItem {
+  id: View;
+  icon: string;
+  label: string;
+}
 
 @Component({
   selector: 'app-ide-shell',
   imports: [NgIcon, BackendStatus],
   viewProviders: [
     provideIcons({
-      lucideFolderTree,
-      lucideCode,
-      lucideMonitor,
-      lucideTerminal,
+      lucideFiles,
+      lucideSearch,
+      lucideGitBranch,
+      lucideSparkles,
       lucideSettings,
-      lucideBot,
+      lucideSquareCode,
+      lucideFilePlus,
+      lucideFolderPlus,
+      lucideRefreshCw,
+      lucideEllipsis,
+      lucideX,
+      lucideFileCode,
+      lucideMousePointerClick,
+      lucideTerminal,
+      lucidePlus,
+      lucideTrash2,
+      lucideChevronDown,
     }),
   ],
   templateUrl: './ide-shell.html',
 })
 export class IdeShell {
-  readonly leftWidth = signal(260);
-  readonly rightWidth = signal(320);
+  readonly railItems: readonly RailItem[] = [
+    { id: 'explorer', icon: 'lucideFiles', label: 'Explorador' },
+    { id: 'search', icon: 'lucideSearch', label: 'Buscar' },
+    { id: 'git', icon: 'lucideGitBranch', label: 'Control de versiones' },
+    { id: 'chat', icon: 'lucideSparkles', label: 'Chat IA' },
+  ];
+
+  readonly activeView = signal<View>('explorer');
+
+  readonly leftWidth = signal(248);
+  readonly rightWidth = signal(340);
   readonly bottomHeight = signal(200);
 
   private active: Pane | null = null;
   private startPos = 0;
   private startSize = 0;
+
+  activeLabel(): string {
+    return this.railItems.find((item) => item.id === this.activeView())?.label ?? '';
+  }
 
   startResize(pane: Pane, event: PointerEvent): void {
     this.active = pane;
@@ -57,7 +99,7 @@ export class IdeShell {
     if (this.active === 'left') {
       this.leftWidth.set(this.clamp(this.startSize + (event.clientX - this.startPos), 180, 480));
     } else if (this.active === 'right') {
-      this.rightWidth.set(this.clamp(this.startSize + (this.startPos - event.clientX), 220, 520));
+      this.rightWidth.set(this.clamp(this.startSize + (this.startPos - event.clientX), 260, 560));
     } else {
       this.bottomHeight.set(this.clamp(this.startSize + (this.startPos - event.clientY), 120, 480));
     }
