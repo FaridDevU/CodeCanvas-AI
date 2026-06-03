@@ -1,11 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component } from '@angular/core';
+import { IdeShell } from './layout/ide-shell/ide-shell';
 
 @Component({
   selector: 'app-root',
-  imports: [],
+  imports: [IdeShell],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrl: './app.css',
 })
-export class App {
-  protected readonly title = signal('codecanvas-ui');
-}
+export class App {}
