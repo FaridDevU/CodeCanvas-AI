@@ -5,34 +5,49 @@
 
 import { URI } from '../../../../base/common/uri.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
+import { $, append } from '../../../../base/browser/dom.js';
+import { observableValue, ISettableObservable, runOnChange } from '../../../../base/common/observable.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { FileChangeType } from '../../../../platform/files/common/files.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
-import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { ServicesAccessor, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
-import { Extensions as ViewContainerExtensions, IViewContainersRegistry, ViewContainerLocation } from '../../../common/views.js';
-import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
-import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { Codicon } from '../../../../base/common/codicons.js';
-import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
-import { ITerminalService } from '../../terminal/browser/terminal.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
+import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
+import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
+import { ViewPane, IViewPaneOptions } from '../../../browser/parts/views/viewPane.js';
+import { ITerminalService } from '../../terminal/browser/terminal.js';
 import { IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
 import { IElementData } from '../../../../platform/browserView/common/browserView.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
+import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
+import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { IViewDescriptorService } from '../../../common/views.js';
+import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 
 const PREVIEW_ID = 'codecanvas.preview';
 const PREVIEW_VIEW_ID = 'codecanvasPreview';
+const INSPECTOR_VIEW_ID = 'codecanvas.inspector';
 const STATUS_ID = 'status.codecanvasPreview';
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
+const codecanvasInspectorIcon = registerIcon('codecanvas-inspector-icon', Codicon.inspect, localize('codecanvasInspectorIcon', 'View icon of the CodeCanvas Inspector.'));
+
+const currentElementData: ISettableObservable<IElementData | null> = observableValue('codecanvas.currentElement', null);
 
 function getWorkspaceRoot(contextService: IWorkspaceContextService): URI | undefined {
 	if (contextService.getWorkbenchState() === WorkbenchState.EMPTY) {
@@ -102,10 +117,10 @@ async function detectConfigPort(
 		{ file: 'vite.config.ts', patterns: [/server\s*:\s*\{[^}]*port\s*:\s*(\d+)/s, /port\s*:\s*(\d+)/] },
 		{ file: 'vite.config.js', patterns: [/server\s*:\s*\{[^}]*port\s*:\s*(\d+)/s, /port\s*:\s*(\d+)/] },
 		{ file: 'vite.config.mjs', patterns: [/server\s*:\s*\{[^}]*port\s*:\s*(\d+)/s, /port\s*:\s*(\d+)/] },
-		{ file: 'next.config.ts', patterns: [/port\s*:\s*(\d+)/]},
-		{ file: 'next.config.mjs', patterns: [/port\s*:\s*(\d+)/]},
-		{ file: 'next.config.js', patterns: [/port\s*:\s*(\d+)/]},
-		{ file: 'astro.config.mjs', patterns: [/server\s*:\s*\{[^}]*port\s*:\s*(\d+)/s, /port\s*:\s*(\d+)/]},
+		{ file: 'next.config.ts', patterns: [/port\s*:\s*(\d+)/] },
+		{ file: 'next.config.mjs', patterns: [/port\s*:\s*(\d+)/] },
+		{ file: 'next.config.js', patterns: [/port\s*:\s*(\d+)/] },
+		{ file: 'astro.config.mjs', patterns: [/server\s*:\s*\{[^}]*port\s*:\s*(\d+)/s, /port\s*:\s*(\d+)/] },
 	];
 
 	for (const { file, patterns } of configs) {
@@ -298,6 +313,180 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 	await openLocalhostPreview(accessor);
 }
 
+// Inspector ViewPane
+class CodeCanvasInspectorView extends ViewPane {
+	static readonly ID = INSPECTOR_VIEW_ID;
+	static readonly NAME = localize2('inspectorView', "Element Inspector");
+
+	private contentEl!: HTMLElement;
+
+	constructor(
+		options: IViewPaneOptions,
+		@IThemeService themeService: IThemeService,
+		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
+		@IInstantiationService anotherInstantiationService: IInstantiationService,
+		@IKeybindingService keybindingService: IKeybindingService,
+		@IContextMenuService contextMenuService: IContextMenuService,
+		@IConfigurationService configurationService: IConfigurationService,
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IOpenerService openerService: IOpenerService,
+		@IHoverService hoverService: IHoverService,
+	) {
+		super(options, keybindingService, contextMenuService, configurationService, contextKeyService,
+			viewDescriptorService, anotherInstantiationService, openerService, themeService, hoverService);
+	}
+
+	protected override renderBody(container: HTMLElement): void {
+		super.renderBody(container);
+		container.style.padding = '8px';
+		container.style.fontFamily = 'var(--monaco-monospace-font, monospace)';
+		container.style.fontSize = '12px';
+		container.style.overflowY = 'auto';
+
+		this.contentEl = append(container, $('div'));
+		this.renderEmpty();
+
+		this._register(runOnChange(currentElementData, (data) => {
+			if (data) {
+				this.renderElement(data);
+			} else {
+				this.renderEmpty();
+			}
+		}));
+	}
+
+	private renderEmpty(): void {
+		this.contentEl.innerHTML = '';
+		const empty = append(this.contentEl, $('div'));
+		empty.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
+		empty.style.textAlign = 'center';
+		empty.style.padding = '20px';
+		empty.textContent = localize('inspector.empty', "Click an element in the preview to inspect it.\nRun CodeCanvas: Inspect Element to start.");
+	}
+
+	private renderElement(data: IElementData): void {
+		this.contentEl.innerHTML = '';
+
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(data.outerHTML, 'text/html');
+		const el = doc.body.firstElementChild;
+		const tagName = el?.tagName?.toLowerCase() ?? 'element';
+		const id = data.attributes?.id ?? '';
+		const classes = data.attributes?.class ?? '';
+		const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.replace(/\s+/g, '.') : ''}`;
+		const bounds = data.bounds;
+		const dims = data.dimensions;
+
+		const section = (title: string): HTMLElement => {
+			const sec = $('div', undefined);
+			sec.style.marginBottom = '12px';
+
+			const h = $('div', undefined);
+			h.style.fontWeight = 'bold';
+			h.style.marginBottom = '4px';
+			h.style.color = 'var(--vscode-textLink-foreground, #228df2)';
+			h.textContent = title;
+			h.style.fontSize = '11px';
+			h.style.textTransform = 'uppercase';
+			h.style.letterSpacing = '0.5px';
+			sec.appendChild(h);
+
+			const body = $('div', undefined);
+			sec.appendChild(body);
+			return sec;
+		};
+
+		const row = (label: string, value: string, isMono = true): HTMLElement => {
+			const r = $('div', undefined);
+			r.style.display = 'flex';
+			r.style.marginBottom = '2px';
+
+			const lbl = $('span', undefined);
+			lbl.textContent = label + ': ';
+			lbl.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
+			lbl.style.flexShrink = '0';
+			r.appendChild(lbl);
+
+			const val = $('span', undefined);
+			val.textContent = value;
+			val.style.wordBreak = 'break-all';
+			if (isMono) {
+				val.style.color = 'var(--vscode-textPreformat-foreground, #ccc)';
+			}
+			r.appendChild(val);
+
+			return r;
+		};
+
+		// Tag section
+		const tagSection = section(localize('inspector.section.element', "Element"));
+		append(tagSection.children[1] as HTMLElement, row(localize('inspector.tag', "Tag"), tagName.toUpperCase()));
+		append(tagSection.children[1] as HTMLElement, row(localize('inspector.selector', "Selector"), selector || tagName));
+		this.contentEl.appendChild(tagSection);
+
+		// Dimensions section
+		const dimsSection = section(localize('inspector.section.dimensions', "Dimensions"));
+		const w = bounds?.width ?? dims?.width ?? 0;
+		const h = bounds?.height ?? dims?.height ?? 0;
+		append(dimsSection.children[1] as HTMLElement, row(localize('inspector.size', "Size"), `${w} x ${h}`));
+		if (dimensionsData(data)) {
+			const d = dimensionsData(data)!;
+			append(dimsSection.children[1] as HTMLElement, row(localize('inspector.position', "Position"), `left:${d.left}, top:${d.top}`));
+		}
+		this.contentEl.appendChild(dimsSection);
+
+		// Attributes section
+		if (data.attributes) {
+			const filtered = Object.entries(data.attributes).filter(([k]) => k !== 'class' && k !== 'id' && k !== 'style');
+			if (filtered.length > 0) {
+				const attrsSection = section(localize('inspector.section.attributes', "Attributes"));
+				const attrsBody = attrsSection.children[1] as HTMLElement;
+				for (const [key, value] of filtered) {
+					append(attrsBody, row(key, value));
+				}
+				this.contentEl.appendChild(attrsSection);
+			}
+		}
+
+		// Computed styles section
+		if (data.computedStyles) {
+			const important = ['display', 'position', 'color', 'background-color', 'font-size', 'font-family',
+				'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom',
+				'flex', 'grid', 'z-index', 'overflow'];
+			const relevant = Object.entries(data.computedStyles)
+				.filter(([k]) => important.includes(k) || important.some(p => k.startsWith(p)))
+				.slice(0, 20);
+
+			if (relevant.length > 0) {
+				const styleSection = section(localize('inspector.section.styles', "Computed Styles"));
+				const styleBody = styleSection.children[1] as HTMLElement;
+				for (const [key, val] of relevant) {
+					append(styleBody, row(key, val));
+				}
+				this.contentEl.appendChild(styleSection);
+			}
+		}
+
+		// DOM path section
+		if (data.ancestors && data.ancestors.length > 0) {
+			const pathSection = section(localize('inspector.section.path', "DOM Path"));
+			const ancestorPath = data.ancestors.slice().reverse().map(a => a.tagName.toLowerCase()).join(' > ') + ' > ' + tagName;
+			const pathVal = $('span', undefined);
+			pathVal.textContent = ancestorPath;
+			pathVal.style.color = 'var(--vscode-textPreformat-foreground, #ccc)';
+			pathVal.style.fontSize = '11px';
+			append(pathSection.children[1] as HTMLElement, pathVal);
+			this.contentEl.appendChild(pathSection);
+		}
+	}
+}
+
+function dimensionsData(data: IElementData): { left: number; top: number; width: number; height: number } | undefined {
+	if (data.dimensions) { return data.dimensions; }
+	if (data.bounds) { return { left: data.bounds.x, top: data.bounds.y, width: data.bounds.width, height: data.bounds.height }; }
+	return undefined;
+}
+
 // Preview status bar contribution
 class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 	static readonly ID = 'workbench.contrib.codecanvasPreviewStatus';
@@ -437,8 +626,8 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 	}
 }
 
-// Preview view container in the activity bar
-Registry.as<IViewContainersRegistry>(
+// View container + views registration
+const viewContainer = Registry.as<IViewContainersRegistry>(
 	ViewContainerExtensions.ViewContainersRegistry
 ).registerViewContainer({
 	id: PREVIEW_VIEW_ID,
@@ -449,6 +638,16 @@ Registry.as<IViewContainersRegistry>(
 	storageId: PREVIEW_VIEW_ID,
 	hideIfEmpty: false,
 }, ViewContainerLocation.Sidebar);
+
+Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
+	id: CodeCanvasInspectorView.ID,
+	name: CodeCanvasInspectorView.NAME,
+	ctorDescriptor: new SyncDescriptor(CodeCanvasInspectorView),
+	containerIcon: codecanvasInspectorIcon,
+	canToggleVisibility: true,
+	canMoveView: true,
+	order: 1,
+}], viewContainer);
 
 // Actions
 registerAction2(class OpenCodeCanvasPreviewAction extends Action2 {
@@ -538,13 +737,14 @@ registerAction2(class InspectElementAction extends Action2 {
 		notificationService.info(localize('inspector.active', "Click on any element in the preview to inspect it. Press Escape to stop."));
 
 		const listener = model.onDidSelectElement((data: IElementData) => {
-			showElementInfo(notificationService, data);
+			currentElementData.set(data, undefined, undefined);
 		});
 
 		const activeListener = model.onDidChangeElementSelectionActive((active: boolean) => {
 			if (!active) {
 				listener.dispose();
 				activeListener.dispose();
+				currentElementData.set(null, undefined, undefined);
 			}
 		});
 	}
@@ -570,44 +770,8 @@ registerAction2(class StopInspectAction extends Action2 {
 
 		const model = input.model ?? await input.resolve();
 		await model.toggleElementSelection(false);
+		currentElementData.set(null, undefined, undefined);
 	}
 });
-
-function showElementInfo(notificationService: INotificationService, data: IElementData): void {
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(data.outerHTML, 'text/html');
-	const el = doc.body.firstElementChild;
-	const tagName = el?.tagName?.toLowerCase() ?? 'element';
-
-	const classes = data.attributes?.class ?? '';
-	const id = data.attributes?.id ?? '';
-	const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.split(' ').join('.') : ''}`;
-
-	const bounds = data.bounds;
-	const dims = data.dimensions;
-	const infoLines = [
-		localize('inspector.tag', "Tag: {0}", tagName.toUpperCase()),
-		localize('inspector.selector', "Selector: {0}", selector),
-		localize('inspector.dimensions', "Size: {0}x{1}px", bounds?.width ?? dims?.width ?? '?', bounds?.height ?? dims?.height ?? '?'),
-	];
-
-	if (data.innerText && data.innerText.trim()) {
-		infoLines.push(localize('inspector.text', "Text: \"{0}\"", data.innerText.trim().substring(0, 100)));
-	}
-
-	if (data.attributes) {
-		const attrs = Object.entries(data.attributes).filter(([k]) => k !== 'class' && k !== 'id');
-		if (attrs.length > 0) {
-			infoLines.push(localize('inspector.attrs', "Attributes: {0}", attrs.map(([k, v]) => `${k}="${v}"`).join(', ')));
-		}
-	}
-
-	if (data.ancestors && data.ancestors.length > 0) {
-		const ancestorPath = data.ancestors.map(a => a.tagName.toLowerCase()).join(' > ') + ' > ' + tagName;
-		infoLines.push(localize('inspector.path', "Path: {0}", ancestorPath));
-	}
-
-	notificationService.info(infoLines.join('\n'));
-}
 
 registerWorkbenchContribution2(CodeCanvasPreviewStatusContribution.ID, CodeCanvasPreviewStatusContribution, WorkbenchPhase.BlockRestore);
