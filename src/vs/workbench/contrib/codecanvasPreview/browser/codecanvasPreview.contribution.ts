@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) CodeCanvas AI contributors. All rights reserved.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -10,11 +10,10 @@ import { observableValue, ISettableObservable, runOnChange } from '../../../../b
 import { localize, localize2 } from '../../../../nls.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
-import { FileChangeType } from '../../../../platform/files/common/files.js';
-import { IFileService } from '../../../../platform/files/common/files.js';
+import { FileChangeType, IFileService } from '../../../../platform/files/common/files.js';
 import { ServicesAccessor, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { INotificationService } from '../../../../platform/notification/common/notification.js';
+import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
@@ -22,7 +21,7 @@ import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/w
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
-import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
+import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation, IViewDescriptorService } from '../../../common/views.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { ViewPane, IViewPaneOptions } from '../../../browser/parts/views/viewPane.js';
 import { ITerminalService } from '../../terminal/browser/terminal.js';
@@ -30,15 +29,13 @@ import { IBrowserViewWorkbenchService } from '../../browserView/common/browserVi
 import { VSBuffer } from '../../../../base/common/buffer.js';
 import { IElementData } from '../../../../platform/browserView/common/browserView.js';
 import { Codicon } from '../../../../base/common/codicons.js';
-import { Severity } from '../../../../platform/notification/common/notification.js';
-import { generateDiff, createBackup, IDomDelta } from './EdicionVisual/diffEngine.js';
+import { generateDiff, createBackup, IDomDelta } from '../common/EdicionVisual/diffEngine.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
-import { IViewDescriptorService } from '../../../common/views.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 
@@ -51,6 +48,28 @@ const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.ey
 const codecanvasInspectorIcon = registerIcon('codecanvas-inspector-icon', Codicon.inspect, localize('codecanvasInspectorIcon', 'View icon of the CodeCanvas Inspector.'));
 
 const currentElementData: ISettableObservable<IElementData | null> = observableValue('codecanvas.currentElement', null);
+
+interface ICodeCanvasPreviewServices {
+	readonly browserViewWorkbenchService: IBrowserViewWorkbenchService;
+	readonly contextService: IWorkspaceContextService;
+	readonly editorService: IEditorService;
+	readonly fileService: IFileService;
+	readonly notificationService: INotificationService;
+	readonly quickInputService: IQuickInputService;
+	readonly terminalService: ITerminalService;
+}
+
+function getPreviewServices(accessor: ServicesAccessor): ICodeCanvasPreviewServices {
+	return {
+		browserViewWorkbenchService: accessor.get(IBrowserViewWorkbenchService),
+		contextService: accessor.get(IWorkspaceContextService),
+		editorService: accessor.get(IEditorService),
+		fileService: accessor.get(IFileService),
+		notificationService: accessor.get(INotificationService),
+		quickInputService: accessor.get(IQuickInputService),
+		terminalService: accessor.get(ITerminalService)
+	};
+}
 
 function getWorkspaceRoot(contextService: IWorkspaceContextService): URI | undefined {
 	if (contextService.getWorkbenchState() === WorkbenchState.EMPTY) {
@@ -147,12 +166,10 @@ async function detectConfigPort(
 	return undefined;
 }
 
-async function openBrowserPreview(accessor: ServicesAccessor, url: string, title = localize('preview.title', "CodeCanvas Preview")): Promise<void> {
-	const browserViewWorkbenchService = accessor.get(IBrowserViewWorkbenchService);
-	const editorService = accessor.get(IEditorService);
-	const input = browserViewWorkbenchService.getOrCreateLazy(PREVIEW_ID, { url, title });
+async function openBrowserPreview(services: ICodeCanvasPreviewServices, url: string, title = localize('preview.title', "CodeCanvas Preview")): Promise<void> {
+	const input = services.browserViewWorkbenchService.getOrCreateLazy(PREVIEW_ID, { url, title });
 	input.navigate(url);
-	await editorService.openEditor(input, { pinned: true });
+	await services.editorService.openEditor(input, { pinned: true });
 }
 
 async function tryConnectToUrls(urls: string[]): Promise<string | null> {
@@ -184,9 +201,8 @@ async function hasNpmDevScript(fileService: IFileService, packageJson: URI): Pro
 	}
 }
 
-async function openLocalhostPreview(accessor: ServicesAccessor): Promise<void> {
-	const quickInputService = accessor.get(IQuickInputService);
-	const value = await quickInputService.input({
+async function openLocalhostPreview(services: ICodeCanvasPreviewServices): Promise<void> {
+	const value = await services.quickInputService.input({
 		title: localize('localhostPreview.title', "Open CodeCanvas Localhost Preview"),
 		prompt: localize('localhostPreview.prompt', "Enter a localhost port or full URL"),
 		value: 'http://localhost:5173'
@@ -196,34 +212,31 @@ async function openLocalhostPreview(accessor: ServicesAccessor): Promise<void> {
 		return;
 	}
 
-	await openBrowserPreview(accessor, normalizePreviewUrl(value), localize('localhostPreview.editorTitle', "CodeCanvas Localhost Preview"));
+	await openBrowserPreview(services, normalizePreviewUrl(value), localize('localhostPreview.editorTitle', "CodeCanvas Localhost Preview"));
 }
 
-async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
-	const contextService = accessor.get(IWorkspaceContextService);
-	const fileService = accessor.get(IFileService);
-	const quickInputService = accessor.get(IQuickInputService);
-	const root = getWorkspaceRoot(contextService);
+async function openWorkspacePreview(services: ICodeCanvasPreviewServices): Promise<void> {
+	const root = getWorkspaceRoot(services.contextService);
 
 	if (!root) {
-		await openLocalhostPreview(accessor);
+		await openLocalhostPreview(services);
 		return;
 	}
 
 	const indexHtml = URI.joinPath(root, 'index.html');
-	if (await fileService.exists(indexHtml)) {
-		await openBrowserPreview(accessor, indexHtml.toString(), localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
+	if (await services.fileService.exists(indexHtml)) {
+		await openBrowserPreview(services, indexHtml.toString(), localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
 		return;
 	}
 
 	const packageJson = URI.joinPath(root, 'package.json');
-	if (await fileService.exists(packageJson)) {
+	if (await services.fileService.exists(packageJson)) {
 
 		const picks: IQuickPickItem[] = [];
-		const { hasScript, devScriptValue } = await hasNpmDevScript(fileService, packageJson);
+		const { hasScript, devScriptValue } = await hasNpmDevScript(services.fileService, packageJson);
 
 		if (hasScript) {
-			const configPort = await detectConfigPort(fileService, root);
+			const configPort = await detectConfigPort(services.fileService, root);
 			const guessedUrls = getDefaultUrlsFromPackageScripts(devScriptValue);
 			let portLabel = '';
 
@@ -249,7 +262,7 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 			description: localize('preview.pick.openLocalhostDescription', "Use an already running dev server")
 		});
 
-		const picked = await quickInputService.pick(picks, {
+		const picked = await services.quickInputService.pick(picks, {
 			title: localize('preview.pick.title', "CodeCanvas Preview"),
 			placeHolder: localize('preview.pick.placeholder', "Choose how to open this project")
 		});
@@ -259,7 +272,7 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 		}
 
 		if (picked.id === 'start-dev-server') {
-			const configPort = hasScript ? await detectConfigPort(fileService, root) : undefined;
+			const configPort = hasScript ? await detectConfigPort(services.fileService, root) : undefined;
 			const guessedUrls = getDefaultUrlsFromPackageScripts(devScriptValue || '');
 			let previewUrl: string;
 
@@ -274,19 +287,17 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 				}
 			}
 
-			const terminalService = accessor.get(ITerminalService);
-			const instance = await terminalService.createTerminal({
+			const instance = await services.terminalService.createTerminal({
 				cwd: root,
 				location: TerminalLocation.Panel,
 				config: {
 					name: localize('preview.terminalName', "CodeCanvas Preview")
 				}
 			});
-			await terminalService.revealTerminal(instance);
+			await services.terminalService.revealTerminal(instance);
 			await instance.runCommand('npm run dev', true, 'codecanvas.preview.startDevServer');
 
-			const notificationService = accessor.get(INotificationService);
-			notificationService.info(localize('preview.waiting', "Starting dev server, waiting for {0}...", previewUrl));
+			services.notificationService.info(localize('preview.waiting', "Starting dev server, waiting for {0}...", previewUrl));
 
 			setTimeout(async () => {
 				try {
@@ -296,11 +307,11 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 					clearTimeout(timeout);
 
 					if (response.ok || response.status < 500) {
-						await openBrowserPreview(accessor, previewUrl, localize('vitePreview.editorTitle', "CodeCanvas Dev Server Preview"));
-						notificationService.info(localize('preview.connected', "Connected to dev server at {0}", previewUrl));
+						await openBrowserPreview(services, previewUrl, localize('vitePreview.editorTitle', "CodeCanvas Dev Server Preview"));
+						services.notificationService.info(localize('preview.connected', "Connected to dev server at {0}", previewUrl));
 					}
 				} catch {
-					notificationService.warn(localize('preview.notReady', "Dev server not ready yet. Use CodeCanvas: Open Localhost Preview to connect manually."));
+					services.notificationService.warn(localize('preview.notReady', "Dev server not ready yet. Use CodeCanvas: Open Localhost Preview to connect manually."));
 				}
 			}, 3000);
 
@@ -308,12 +319,12 @@ async function openWorkspacePreview(accessor: ServicesAccessor): Promise<void> {
 		}
 
 		if (picked.id === 'open-localhost') {
-			await openLocalhostPreview(accessor);
+			await openLocalhostPreview(services);
 			return;
 		}
 	}
 
-	await openLocalhostPreview(accessor);
+	await openLocalhostPreview(services);
 }
 
 // Inspector ViewPane
@@ -495,8 +506,8 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 	static readonly ID = 'workbench.contrib.codecanvasPreviewStatus';
 
 	private statusEntry: IStatusbarEntryAccessor | undefined;
-	private disposables = new DisposableStore();
-	private watcherDisposables = new DisposableStore();
+	private readonly disposables = new DisposableStore();
+	private readonly watcherDisposables = new DisposableStore();
 	private reloadTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
@@ -613,7 +624,7 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 
 		const model = input.model ?? input.resolve();
 		if (model instanceof Promise) {
-			model.then(m => m.reload(true)).catch(() => {});
+			model.then(m => m.reload(true)).catch(() => { });
 		} else {
 			model.reload(true);
 		}
@@ -667,7 +678,7 @@ registerAction2(class OpenCodeCanvasPreviewAction extends Action2 {
 	}
 
 	override async run(accessor: ServicesAccessor): Promise<void> {
-		await openWorkspacePreview(accessor);
+		await openWorkspacePreview(getPreviewServices(accessor));
 	}
 });
 
@@ -685,7 +696,7 @@ registerAction2(class OpenCodeCanvasLocalhostPreviewAction extends Action2 {
 	}
 
 	override async run(accessor: ServicesAccessor): Promise<void> {
-		await openLocalhostPreview(accessor);
+		await openLocalhostPreview(getPreviewServices(accessor));
 	}
 });
 
@@ -829,6 +840,17 @@ registerAction2(class EditCSSAction extends Action2 {
 
 		const stylesToEdit: Record<string, string> = {};
 		const currentStyles = elementData.computedStyles ?? {};
+
+		// Phase 3 scope: start with positioned elements only (absolute/fixed),
+		// where position/size deltas map cleanly to CSS.
+		const position = (currentStyles['position'] ?? '').toLowerCase();
+		if (position !== 'absolute' && position !== 'fixed') {
+			notificationService.info(localize('editCSS.absoluteOnly',
+				"Visual editing currently supports only elements with position: absolute or fixed (this one is '{0}').",
+				position || 'static'));
+			return;
+		}
+
 		const editableProps = ['position', 'top', 'left', 'right', 'bottom', 'width', 'height',
 			'margin', 'padding', 'display', 'background-color', 'color', 'font-size', 'opacity', 'z-index'];
 
