@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=@@NAME_LONG@@ - URL Handler
-Comment=Code Editing. Redefined.
-GenericName=Text Editor
+Comment=Visual frontend IDE with code, terminal, AI, and project preview.
+GenericName=Code Editor
 Exec=@@EXEC@@ --open-url %U
 Icon=@@ICON@@
 Type=Application
@@ -9,4 +9,4 @@ NoDisplay=true
 StartupNotify=true
 Categories=Utility;TextEditor;Development;IDE;
 MimeType=x-scheme-handler/@@URLPROTOCOL@@;
-Keywords=vscode;
+Keywords=codecanvas;ide;editor;frontend;ai;

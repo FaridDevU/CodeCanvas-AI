@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=@@NAME_LONG@@
-Comment=Code Editing. Redefined.
-GenericName=Text Editor
+Comment=Visual frontend IDE with code, terminal, AI, and project preview.
+GenericName=Code Editor
 Exec=@@EXEC@@ %F
 Icon=@@ICON@@
 Type=Application
@@ -10,7 +10,7 @@ StartupWMClass=@@NAME_SHORT@@
 Categories=TextEditor;Development;IDE;
 MimeType=application/x-@@NAME@@-workspace;
 Actions=new-empty-window;
-Keywords=vscode;
+Keywords=codecanvas;ide;editor;frontend;ai;
 
 [Desktop Action new-empty-window]
 Name=New Empty Window

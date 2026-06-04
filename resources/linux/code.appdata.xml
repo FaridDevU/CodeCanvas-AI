@@ -4,15 +4,15 @@
 	<metadata_license>@@LICENSE@@</metadata_license>
 	<project_license>@@LICENSE@@</project_license>
 	<name>@@NAME_LONG@@</name>
-	<url type="homepage">https://code.visualstudio.com</url>
-	<summary>Visual Studio Code. Code editing. Redefined.</summary>
+	<url type="homepage">https://github.com/FaridDevU/CodeCanvas-AI</url>
+	<summary>CodeCanvas AI. Visual frontend IDE built from VS Code OSS.</summary>
 	<description>
-		<p>Visual Studio Code is a new choice of tool that combines the simplicity of a code editor with what developers need for the core edit-build-debug cycle. See https://code.visualstudio.com/docs/setup/linux for installation instructions and FAQ.</p>
+		<p>CodeCanvas AI is a desktop IDE for frontend development. It is built as a fork of Visual Studio Code - Open Source and adds a product direction focused on real project preview, visual inspection, terminal workflows, and AI-assisted diffs.</p>
 	</description>
 	<screenshots>
 		<screenshot type="default">
-			<image>https://code.visualstudio.com/home/home-screenshot-linux-lg.png</image>
-			<caption>Editing TypeScript and searching for extensions</caption>
+			<image>https://raw.githubusercontent.com/FaridDevU/CodeCanvas-AI/main/resources/linux/code.png</image>
+			<caption>CodeCanvas AI desktop IDE</caption>
 		</screenshot>
 	</screenshots>
 </component>
