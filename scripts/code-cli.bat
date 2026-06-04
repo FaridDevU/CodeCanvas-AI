@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-title VSCode Dev
+title CodeCanvas AI CLI Dev
 
 pushd %~dp0..
 

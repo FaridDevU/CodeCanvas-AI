@@ -369,9 +369,9 @@ async function runOnce(electronPath, scenario, mockServer, verbose, runIndex, ru
 	const { userDataDir, extDir, logsDir } = prepareRunDir(runIndex, mockServer, settingsOverrides);
 	const isDevBuild = !electronPath.includes('.vscode-test') && !electronPath.includes('VSCode-');
 	// Extract a clean build label from the path.
-	// Dev:          .build/electron/Code - OSS.app/.../Code - OSS  → "dev"
+	// Dev:          .build/electron/CodeCanvas AI.app/.../CodeCanvas AI  → "dev"
 	// Stable:       .vscode-test/vscode-darwin-arm64-1.115.0/Visual Studio Code.app/.../Electron → "1.115.0"
-	// Production:   ../VSCode-darwin-arm64/Code - OSS.app/.../Code - OSS → "production"
+	// Production:   ../CodeCanvasAI-darwin-arm64/CodeCanvas AI.app/.../CodeCanvas AI → "production"
 	let buildLabel = 'dev';
 	if (!isDevBuild) {
 		const vscodeTestMatch = electronPath.match(/vscode-test\/vscode-[^/]*?-(\d+\.\d+\.\d+)/);
