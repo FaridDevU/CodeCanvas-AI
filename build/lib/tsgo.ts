@@ -14,6 +14,10 @@ const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 const timestampRegex = /^\[\d{2}:\d{2}:\d{2}\]\s*/;
 
+function shellArg(arg: string): string {
+	return process.platform === 'win32' && /\s/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+}
+
 export function spawnTsgo(projectPath: string, config: { taskName: string; noEmit?: boolean }, onComplete?: () => Promise<void> | void): Promise<void> {
 	function runReporter(output: string) {
 		const lines = (output || '').split('\n');
@@ -24,7 +28,7 @@ export function spawnTsgo(projectPath: string, config: { taskName: string; noEmi
 		}
 	}
 
-	const args = ['tsgo', '--project', projectPath, '--pretty', 'false', '--incremental'];
+	const args = ['tsgo', '--project', shellArg(projectPath), '--pretty', 'false', '--incremental'];
 	if (config.noEmit) {
 		args.push('--noEmit');
 	} else {
