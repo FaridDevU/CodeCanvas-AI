@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="CodeCanvas.LocalServer.Tests/CodeCanvas.LocalServer.Tests.csproj" />
-  <Project Path="CodeCanvas.LocalServer/CodeCanvas.LocalServer.csproj" />
-</Solution>
