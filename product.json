@@ -18,24 +18,24 @@
 	"win32DirName": "CodeCanvas AI",
 	"win32NameVersion": "CodeCanvas AI",
 	"win32RegValueName": "CodeCanvas",
-	"win32x64AppId": "{{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}",
-	"win32arm64AppId": "{{D1ACE434-89C5-48D1-88D3-E2991DF85475}",
-	"win32x64UserAppId": "{{CC6B787D-37A0-49E8-AE24-8559A032BE0C}",
-	"win32arm64UserAppId": "{{3AEBF0C8-F733-4AD4-BADE-FDB816D53D7B}",
+	"win32x64AppId": "{{1948576B-6306-430F-A7C8-593F75EC550C}",
+	"win32arm64AppId": "{{AC826F68-F41E-4596-9A82-0611F787566C}",
+	"win32x64UserAppId": "{{9403DE6D-6D28-4BAC-8B7D-2D1BAA05A4F0}",
+	"win32arm64UserAppId": "{{1486F86F-BBC0-4058-BFF4-13F22CC748AD}",
 	"win32AppUserModelId": "CodeCanvas.CodeCanvasAI",
 	"win32ShellNameShort": "CodeCanvas AI",
 	"win32TunnelServiceMutex": "codecanvas-tunnelservice",
 	"win32TunnelMutex": "codecanvas-tunnel",
 	"darwinBundleIdentifier": "ai.codecanvas",
-	"darwinProfileUUID": "47827DD9-4734-49A0-AF80-7E19B11495CC",
-	"darwinProfilePayloadUUID": "CF808BE7-53F3-46C6-A7E2-7EDB98A5E959",
+	"darwinProfileUUID": "425473A5-FCC6-4596-AFCF-26E0363512EC",
+	"darwinProfilePayloadUUID": "F8A71E8A-8D9A-4983-BAA4-D1B70912C170",
 	"linuxIconName": "codecanvas",
 	"licenseFileName": "LICENSE.txt",
 	"reportIssueUrl": "https://github.com/FaridDevU/CodeCanvas-AI/issues/new",
 	"nodejsRepository": "https://nodejs.org",
 	"urlProtocol": "codecanvas",
 	"agentsTelemetryAppName": "agents",
-	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
+	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.codecanvas.ai/insider/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
 		{
 			"name": "ms-vscode.js-debug-companion",
@@ -160,7 +160,7 @@
 	"onboardingKeymaps": [
 		{
 			"id": "vscode",
-			"label": "VS Code",
+			"label": "CodeCanvas AI",
 			"description": "Default keyboard mapping"
 		},
 		{
