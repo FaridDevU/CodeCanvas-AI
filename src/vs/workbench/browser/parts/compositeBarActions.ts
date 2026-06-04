@@ -399,6 +399,10 @@ export class CompositeBarActionViewItem extends BaseActionViewItem {
 
 		if (!this.options.icon) {
 			this.label.textContent = this.action.label;
+		} else {
+			// CodeCanvas AI: expose the composite name so the activity bar can render a
+			// text label under the icon via CSS (scoped to .activitybar).
+			this.label.setAttribute('data-cc-name', this.compositeBarActionItem.name);
 		}
 	}
 

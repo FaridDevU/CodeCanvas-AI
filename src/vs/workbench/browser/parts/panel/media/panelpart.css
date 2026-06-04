@@ -98,3 +98,14 @@
 	display: inline-block;
 	transform: rotate(180deg);
 }
+
+/* CodeCanvas AI: panel inferior con esquinas superiores redondeadas */
+.monaco-workbench .part.panel.bottom {
+	border-top-left-radius: var(--codecanvas-radius-lg);
+	border-top-right-radius: var(--codecanvas-radius-lg);
+	overflow: hidden;
+}
+
+.monaco-workbench .part.panel.bottom .composite.title {
+	border-top: none;
+}

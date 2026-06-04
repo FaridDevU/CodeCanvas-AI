@@ -574,3 +574,13 @@
 .monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab:first-child.drop-target-right::before {
 	width: 2px;
 }
+
+/* CodeCanvas AI: tabs redondeadas */
+.monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab {
+	border-radius: var(--codecanvas-radius-md) var(--codecanvas-radius-md) 0 0;
+	margin-right: 2px;
+}
+
+.monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+	box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
+}

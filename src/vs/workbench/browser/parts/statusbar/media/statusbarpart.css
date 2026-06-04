@@ -237,3 +237,12 @@
 	color: var(--vscode-statusBarItem-offlineHoverForeground);
 	background-color: var(--vscode-statusBarItem-offlineHoverBackground) !important;
 }
+
+/* CodeCanvas AI: status bar minimalista */
+.monaco-workbench .part.statusbar {
+	border-top: 1px solid #21262d;
+}
+
+.monaco-workbench .part.statusbar > .items-container > .statusbar-item > .statusbar-item-label {
+	font-size: 11px;
+}

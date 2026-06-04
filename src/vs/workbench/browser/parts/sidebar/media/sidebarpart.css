@@ -124,3 +124,15 @@
 .monaco-workbench .sidebar.pane-composite-part > .title.has-composite-bar > .title-actions .monaco-action-bar .action-item {
 	max-width: 150px;
 }
+
+/* CodeCanvas AI: filas redondeadas en sidebar */
+.monaco-workbench .part.sidebar .monaco-list-row {
+	border-radius: var(--codecanvas-radius-sm);
+}
+
+/* CodeCanvas AI: título sin mayúsculas, look moderno */
+.monaco-workbench .part.sidebar > .title > .title-label h2 {
+	text-transform: none;
+	font-size: 11px;
+	letter-spacing: 0.5px;
+}

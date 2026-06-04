@@ -1,0 +1,52 @@
+/*---------------------------------------------------------------------------------------------
+ *  CodeCanvas AI - Shiny Text
+ *  Native (no React/motion) port of the ShinyText effect: an animated gradient
+ *  clipped to the text. Add the class `cc-shiny-text` to any element.
+ *--------------------------------------------------------------------------------------------*/
+
+.cc-shiny-text {
+	display: inline-block;
+	background-image: linear-gradient(
+		var(--cc-shiny-spread, 120deg),
+		var(--cc-shiny-base, #b5b5b5) 0%,
+		var(--cc-shiny-base, #b5b5b5) 35%,
+		var(--cc-shiny-shine, #ffffff) 50%,
+		var(--cc-shiny-base, #b5b5b5) 65%,
+		var(--cc-shiny-base, #b5b5b5) 100%
+	);
+	background-size: 200% auto;
+	background-position: 150% center;
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+	color: transparent;
+	animation: cc-shiny-move var(--cc-shiny-speed, 2s) linear infinite;
+}
+
+/* direction: 'right' */
+.cc-shiny-text.cc-shiny-reverse {
+	animation-direction: reverse;
+}
+
+.cc-shiny-text.cc-shiny-pause-hover:hover {
+	animation-play-state: paused;
+}
+
+.cc-shiny-text.cc-shiny-disabled {
+	animation: none;
+	color: var(--cc-shiny-base, #b5b5b5);
+	-webkit-text-fill-color: var(--cc-shiny-base, #b5b5b5);
+}
+
+@keyframes cc-shiny-move {
+	0% { background-position: 150% center; }
+	100% { background-position: -50% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cc-shiny-text {
+		animation: none;
+		color: var(--cc-shiny-base, #b5b5b5);
+		-webkit-text-fill-color: var(--cc-shiny-base, #b5b5b5);
+	}
+}

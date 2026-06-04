@@ -1,0 +1,190 @@
+/*---------------------------------------------------------------------------------------------
+ *  CodeCanvas AI - Title bar device control styles
+ *--------------------------------------------------------------------------------------------*/
+
+.cc-device-control-item {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	-webkit-app-region: no-drag;
+}
+
+.cc-device-control {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: 32px;
+}
+
+/* Segmented desktop/tablet/mobile group */
+.cc-device-seg {
+	display: flex;
+	align-items: center;
+	height: 32px;
+	padding: 3px;
+	gap: 2px;
+	background-color: var(--vscode-commandCenter-background, rgba(255, 255, 255, 0.05));
+	border: 1px solid var(--vscode-commandCenter-border, rgba(255, 255, 255, 0.08));
+	border-radius: 8px;
+	box-sizing: border-box;
+}
+
+.cc-device-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--vscode-titleBar-inactiveForeground, #9d9d9d);
+	border-radius: 6px;
+	cursor: pointer;
+	outline: none;
+}
+
+.cc-device-btn:hover {
+	color: var(--vscode-titleBar-activeForeground, #cccccc);
+	background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.cc-device-btn.checked {
+	color: var(--vscode-titleBar-activeForeground, #ffffff);
+	background-color: var(--vscode-commandCenter-activeBackground, rgba(255, 255, 255, 0.14));
+}
+
+.cc-device-btn .codicon {
+	font-size: 18px;
+}
+
+/* Viewport width pill */
+.cc-device-viewport {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 32px;
+	padding: 0 12px;
+	box-sizing: border-box;
+	background-color: var(--vscode-commandCenter-background, rgba(255, 255, 255, 0.05));
+	border: 1px solid var(--vscode-commandCenter-border, rgba(255, 255, 255, 0.08));
+	border-radius: 8px;
+	color: var(--vscode-titleBar-activeForeground, #cccccc);
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.cc-device-viewport:hover {
+	background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.cc-device-viewport-label {
+	font-variant-numeric: tabular-nums;
+}
+
+.cc-device-viewport-chevron.codicon {
+	font-size: 14px;
+	opacity: 0.7;
+}
+
+/* History / Share pills (right side of the title bar) */
+.cc-titlebar-pill-item {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	-webkit-app-region: no-drag;
+}
+
+.cc-titlebar-pill {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	height: 24px;
+	padding: 0 10px;
+	margin: 0 2px;
+	box-sizing: border-box;
+	border: 1px solid var(--vscode-commandCenter-border, rgba(255, 255, 255, 0.08));
+	border-radius: 6px;
+	background-color: var(--vscode-commandCenter-background, rgba(255, 255, 255, 0.05));
+	color: var(--vscode-titleBar-activeForeground, #cccccc);
+	font-size: 12px;
+	cursor: pointer;
+	outline: none;
+}
+
+.cc-titlebar-pill:hover {
+	background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.cc-titlebar-pill .codicon {
+	font-size: 14px;
+}
+
+.cc-titlebar-pill-chevron.codicon {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+/* CodeCanvas AI brand (left side of title bar) */
+.cc-titlebar-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-left: 6px;
+	-webkit-app-region: no-drag;
+}
+
+.cc-titlebar-logo {
+	font-weight: 700;
+	font-size: 13px;
+	color: var(--vscode-titleBar-activeForeground, #ffffff);
+	letter-spacing: -0.2px;
+}
+
+.cc-titlebar-project {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 10px;
+	box-sizing: border-box;
+	background-color: var(--vscode-commandCenter-background, rgba(255, 255, 255, 0.05));
+	border: 1px solid var(--vscode-commandCenter-border, rgba(255, 255, 255, 0.08));
+	border-radius: 6px;
+	color: var(--vscode-titleBar-activeForeground, #cccccc);
+	font-size: 12px;
+	cursor: pointer;
+	outline: none;
+}
+
+.cc-titlebar-project:hover {
+	background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.cc-titlebar-project-name {
+	max-width: 160px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cc-titlebar-chevron.codicon {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+.cc-titlebar-branch {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--vscode-descriptionForeground, #8b949e);
+	font-size: 12px;
+}
+
+.cc-titlebar-branch .codicon {
+	font-size: 12px;
+}
+
+.cc-titlebar-branch-name {
+	opacity: 0.9;
+}

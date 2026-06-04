@@ -3,9 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import './media/shinyText.css';
 import { URI } from '../../../../base/common/uri.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { $, append } from '../../../../base/browser/dom.js';
+import { createShinyText } from './shinyText.js';
+import { CodeCanvasTitleBarContribution } from './titleBarDeviceControl.js';
+import { CodeCanvasStatusBarContribution } from './codecanvasStatusBar.js';
 import { observableValue, ISettableObservable, runOnChange } from '../../../../base/common/observable.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
@@ -31,6 +35,8 @@ import { IElementData } from '../../../../platform/browserView/common/browserVie
 import { Codicon } from '../../../../base/common/codicons.js';
 import { generateDiff, createBackup, IDomDelta } from '../common/EdicionVisual/diffEngine.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
+import { CodeCanvasAiPanelView } from './aiPanelView.js';
+import { CodeCanvasSnapshotsView } from './snapshotsView.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
@@ -46,6 +52,8 @@ const STATUS_ID = 'status.codecanvasPreview';
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
 const codecanvasInspectorIcon = registerIcon('codecanvas-inspector-icon', Codicon.inspect, localize('codecanvasInspectorIcon', 'View icon of the CodeCanvas Inspector.'));
+const aiBuilderIcon = registerIcon('codecanvas-ai-builder-icon', Codicon.lightbulb, localize('aiBuilderIcon', 'View icon of the AI Builder.'));
+const assetsIcon = registerIcon('codecanvas-assets-icon', Codicon.fileMedia, localize('assetsIcon', 'View icon of the Assets.'));
 
 const currentElementData: ISettableObservable<IElementData | null> = observableValue('codecanvas.currentElement', null);
 
@@ -372,10 +380,19 @@ class CodeCanvasInspectorView extends ViewPane {
 	private renderEmpty(): void {
 		this.contentEl.innerHTML = '';
 		const empty = append(this.contentEl, $('div'));
-		empty.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
 		empty.style.textAlign = 'center';
 		empty.style.padding = '20px';
-		empty.textContent = localize('inspector.empty', "Click an element in the preview to inspect it.\nRun CodeCanvas: Inspect Element to start.");
+
+		const wordmark = createShinyText('CodeCanvas AI', { speed: 3, spread: 120 });
+		wordmark.style.display = 'block';
+		wordmark.style.fontSize = '15px';
+		wordmark.style.fontWeight = '600';
+		wordmark.style.marginBottom = '10px';
+		append(empty, wordmark);
+
+		const hint = append(empty, $('div'));
+		hint.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
+		hint.textContent = localize('inspector.empty', "Click an element in the preview to inspect it.\nRun CodeCanvas: Inspect Element to start.");
 	}
 
 	private renderElement(data: IElementData): void {
@@ -662,6 +679,78 @@ Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews
 	canMoveView: true,
 	order: 1,
 }], viewContainer);
+
+// AI Builder view container (Sidebar)
+Registry.as<IViewContainersRegistry>(
+	ViewContainerExtensions.ViewContainersRegistry
+).registerViewContainer({
+	id: 'codecanvas.aiBuilder',
+	title: localize2('aiBuilder', "AI Builder"),
+	icon: aiBuilderIcon,
+	order: 6,
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.aiBuilder', { mergeViewWithContainerWhenSingleView: true }]),
+	storageId: 'codecanvas.aiBuilder',
+	hideIfEmpty: false,
+}, ViewContainerLocation.Sidebar);
+
+// Assets view container (Sidebar)
+Registry.as<IViewContainersRegistry>(
+	ViewContainerExtensions.ViewContainersRegistry
+).registerViewContainer({
+	id: 'codecanvas.assets',
+	title: localize2('assets', "Assets"),
+	icon: assetsIcon,
+	order: 7,
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.assets', { mergeViewWithContainerWhenSingleView: true }]),
+	storageId: 'codecanvas.assets',
+	hideIfEmpty: false,
+}, ViewContainerLocation.Sidebar);
+
+// AI Panel view container (right side / AuxiliaryBar)
+const aiPanelContainer = Registry.as<IViewContainersRegistry>(
+	ViewContainerExtensions.ViewContainersRegistry
+).registerViewContainer({
+	id: 'codecanvas.aiPanel',
+	title: localize2('aiPanel', "CodeCanvas AI"),
+	icon: codecanvasPreviewIcon,
+	order: 1,
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.aiPanel', { mergeViewWithContainerWhenSingleView: true }]),
+	storageId: 'codecanvas.aiPanel',
+	hideIfEmpty: false,
+}, ViewContainerLocation.AuxiliaryBar);
+
+Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
+	id: CodeCanvasAiPanelView.ID,
+	name: CodeCanvasAiPanelView.NAME,
+	ctorDescriptor: new SyncDescriptor(CodeCanvasAiPanelView),
+	containerIcon: codecanvasPreviewIcon,
+	canToggleVisibility: true,
+	canMoveView: true,
+	order: 1,
+}], aiPanelContainer);
+
+// Snapshots view container (Panel / bottom)
+const snapshotsContainer = Registry.as<IViewContainersRegistry>(
+	ViewContainerExtensions.ViewContainersRegistry
+).registerViewContainer({
+	id: 'codecanvas.snapshots',
+	title: localize2('snapshots', "Snapshots"),
+	icon: codecanvasPreviewIcon,
+	order: 10,
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.snapshots', { mergeViewWithContainerWhenSingleView: true }]),
+	storageId: 'codecanvas.snapshots',
+	hideIfEmpty: false,
+}, ViewContainerLocation.Panel);
+
+Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
+	id: CodeCanvasSnapshotsView.ID,
+	name: CodeCanvasSnapshotsView.NAME,
+	ctorDescriptor: new SyncDescriptor(CodeCanvasSnapshotsView),
+	containerIcon: codecanvasPreviewIcon,
+	canToggleVisibility: true,
+	canMoveView: true,
+	order: 1,
+}], snapshotsContainer);
 
 // Actions
 registerAction2(class OpenCodeCanvasPreviewAction extends Action2 {
@@ -1080,3 +1169,5 @@ async function acceptDelta(
 }
 
 registerWorkbenchContribution2(CodeCanvasPreviewStatusContribution.ID, CodeCanvasPreviewStatusContribution, WorkbenchPhase.BlockRestore);
+registerWorkbenchContribution2(CodeCanvasTitleBarContribution.ID, CodeCanvasTitleBarContribution, WorkbenchPhase.BlockRestore);
+registerWorkbenchContribution2(CodeCanvasStatusBarContribution.ID, CodeCanvasStatusBarContribution, WorkbenchPhase.BlockRestore);

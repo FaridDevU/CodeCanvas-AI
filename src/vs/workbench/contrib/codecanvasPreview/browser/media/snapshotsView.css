@@ -1,0 +1,141 @@
+/*---------------------------------------------------------------------------------------------
+ *  CodeCanvas AI - Snapshots timeline styles
+ *--------------------------------------------------------------------------------------------*/
+
+.cc-snapshots {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 0 16px;
+	height: 100%;
+	box-sizing: border-box;
+	font-size: 12px;
+}
+
+.cc-snapshots-header {
+	display: flex;
+	align-items: center;
+}
+
+.cc-snapshots-auto {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #8b949e);
+}
+
+.cc-snapshots-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	display: inline-block;
+}
+
+.cc-snapshots-dot-green {
+	background-color: #3fb950;
+}
+
+/* Timeline track */
+.cc-snapshots-track {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	flex: 1;
+	position: relative;
+}
+
+.cc-snapshots-track::before {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background-color: var(--vscode-panelInput-border, #30363d);
+	z-index: 0;
+}
+
+.cc-snapshots-node {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	position: relative;
+	z-index: 1;
+	padding: 0 12px;
+	background-color: var(--vscode-panel-background, #0d1117);
+}
+
+.cc-snapshots-node-dot {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background-color: var(--vscode-panel-background, #0d1117);
+	border: 2px solid var(--vscode-panelInput-border, #30363d);
+	box-sizing: border-box;
+}
+
+.cc-snapshots-node-dot-active {
+	border-color: var(--vscode-textLink-foreground, #58a6ff);
+	background-color: var(--vscode-textLink-foreground, #58a6ff);
+}
+
+.cc-snapshots-node-info {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+}
+
+.cc-snapshots-time {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground, #8b949e);
+}
+
+.cc-snapshots-label {
+	font-size: 10px;
+	color: var(--vscode-foreground, #c9d1d9);
+	white-space: nowrap;
+}
+
+.cc-snapshots-node-add {
+	cursor: pointer;
+	color: var(--vscode-descriptionForeground, #8b949e);
+}
+
+.cc-snapshots-node-add:hover {
+	color: var(--vscode-foreground, #c9d1d9);
+}
+
+.cc-snapshots-node-add .codicon {
+	font-size: 14px;
+}
+
+/* Actions */
+.cc-snapshots-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.cc-snapshots-btn {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	height: 26px;
+	padding: 0 10px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-panelInput-border, #30363d);
+	background-color: var(--vscode-button-secondaryBackground, #21262d);
+	color: var(--vscode-button-secondaryForeground, #c9d1d9);
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.cc-snapshots-btn:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground, #30363d);
+}
+
+.cc-snapshots-btn .codicon {
+	font-size: 12px;
+}

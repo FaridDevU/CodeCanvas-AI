@@ -42,13 +42,14 @@ import { SwitchCompositeViewAction } from '../compositeBarActions.js';
 
 export class ActivitybarPart extends Part {
 
-	static readonly ACTION_HEIGHT = 48;
+	// CodeCanvas AI: wider/taller so each icon can show a text label underneath.
+	static readonly ACTION_HEIGHT = 54;
 	static readonly COMPACT_ACTION_HEIGHT = 32;
 
-	static readonly ACTIVITYBAR_WIDTH = 48;
+	static readonly ACTIVITYBAR_WIDTH = 64;
 	static readonly COMPACT_ACTIVITYBAR_WIDTH = 36;
 
-	static readonly ICON_SIZE = 24;
+	static readonly ICON_SIZE = 22;
 	static readonly COMPACT_ICON_SIZE = 16;
 
 	static readonly pinnedViewContainersKey = 'workbench.activity.pinnedViewlets2';

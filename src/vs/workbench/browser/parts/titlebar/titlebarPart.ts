@@ -232,7 +232,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	get minimumHeight(): number {
 		const wcoEnabled = isWeb && isWCOEnabled();
-		let value = this.isCommandCenterVisible || wcoEnabled ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30;
+		// CodeCanvas AI: taller title bar so the centered device control has room to breathe.
+		let value = this.isAuxiliary ? (this.isCommandCenterVisible || wcoEnabled ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30) : 44;
 		if (wcoEnabled) {
 			value = Math.max(value, getWCOTitlebarAreaRect(getWindow(this.element))?.height ?? 0);
 		}
@@ -492,8 +493,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.createTitle();
 
 		// Center-Adjacent Toolbar (e.g., update indicator)
+		// CodeCanvas AI: rendered in the true center so the device control sits centered.
 		if (hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
-			const centerAdjacentToolBarElement = append(this.rightContent, $('div.center-adjacent-toolbar-container'));
+			const centerAdjacentToolBarElement = append(this.isAuxiliary ? this.rightContent : this.centerContent, $('div.center-adjacent-toolbar-container'));
 			this.centerAdjacentToolBarDisposable.add(this.instantiationService.createInstance(MenuWorkbenchToolBar, centerAdjacentToolBarElement, MenuId.TitleBarAdjacentCenter, {
 				contextMenu: MenuId.TitleBarContext,
 				hiddenItemStrategy: HiddenItemStrategy.NoHide,
@@ -923,7 +925,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			this.customMenubar.value.layout(menubarDimension);
 		}
 
-		const hasCenter = this.isCommandCenterVisible || this.title.textContent !== '';
+		// CodeCanvas AI: the main window always centers the device control, so keep the
+		// center region even when the command center is disabled.
+		const hasCenter = !this.isAuxiliary || this.isCommandCenterVisible || this.title.textContent !== '';
 		this.rootContainer.classList.toggle('has-center', hasCenter);
 	}
 

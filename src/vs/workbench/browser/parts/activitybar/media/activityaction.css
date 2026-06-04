@@ -228,3 +228,43 @@
 	left: auto;
 	right: 0;
 }
+
+/* CodeCanvas AI: sin barra/punto lateral; el item activo usa fondo redondeado */
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item.checked .active-item-indicator:before {
+	border-left: none !important;
+	display: none;
+}
+
+/* CodeCanvas AI: iconos redondeados en hover */
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-label {
+	border-radius: var(--codecanvas-radius-md);
+}
+
+/* CodeCanvas AI: icono + label de texto debajo (stack vertical) */
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-label.codicon {
+	flex-direction: column;
+	gap: 3px;
+	overflow: visible;
+}
+
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-label.codicon[data-cc-name]::after {
+	content: attr(data-cc-name);
+	display: block;
+	max-width: var(--activity-bar-width, 64px);
+	padding: 0 2px;
+	font-family: var(--monaco-font-family, sans-serif);
+	font-size: 9px;
+	font-weight: 400;
+	line-height: 1;
+	letter-spacing: 0.1px;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	box-sizing: border-box;
+}
+
+/* CodeCanvas AI: fondo redondeado en el item activo (icono + label) */
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item.checked .action-label.codicon {
+	background-color: var(--vscode-commandCenter-activeBackground, rgba(255, 255, 255, 0.10));
+}

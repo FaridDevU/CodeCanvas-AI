@@ -354,3 +354,38 @@ body {
 	outline: 1px dashed var(--vscode-toolbar-hoverOutline);
 	outline-offset: -1px;
 }
+
+/* CodeCanvas AI Premium Skin Overrides */
+.monaco-workbench {
+	--codecanvas-radius-sm: 4px;
+	--codecanvas-radius-md: 6px;
+	--codecanvas-radius-lg: 8px;
+}
+
+/* Glassmorphism en widgets flotantes */
+.monaco-workbench .monaco-quick-open-widget,
+.monaco-workbench .notifications-toasts,
+.monaco-workbench .notifications-center,
+.monaco-editor .monaco-editor-overlay-message,
+.monaco-workbench .monaco-menu-container {
+	backdrop-filter: blur(12px) saturate(180%);
+	-webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+
+/* Inputs redondeados */
+.monaco-workbench .monaco-inputbox,
+.monaco-workbench .select-container select,
+.monaco-workbench .monaco-dropdown {
+	border-radius: var(--codecanvas-radius-md) !important;
+}
+
+/* Buttons redondeados */
+.monaco-workbench .monaco-button,
+.monaco-workbench button {
+	border-radius: var(--codecanvas-radius-md) !important;
+}
+
+/* Command Center pill */
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title > .command-center .action-item.command-center-center {
+	border-radius: var(--codecanvas-radius-md) !important;
+}
