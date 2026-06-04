@@ -26,6 +26,7 @@ import { ITerminalService } from '../../terminal/browser/terminal.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
+import { IElementData } from '../../../../platform/browserView/common/browserView.js';
 
 const PREVIEW_ID = 'codecanvas.preview';
 const PREVIEW_VIEW_ID = 'codecanvasPreview';
@@ -509,5 +510,104 @@ registerAction2(class ReloadCodeCanvasPreviewAction extends Action2 {
 		await model.reload(true);
 	}
 });
+
+registerAction2(class InspectElementAction extends Action2 {
+	constructor() {
+		super({
+			id: 'codecanvas.preview.inspectElement',
+			title: localize2('inspectElement', "CodeCanvas: Inspect Element"),
+			category: Categories.View,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette
+			}
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const browserViewWorkbenchService = accessor.get(IBrowserViewWorkbenchService);
+		const notificationService = accessor.get(INotificationService);
+		const input = browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+		if (!input) {
+			notificationService.info(localize('inspector.noPreview', "Open a preview first (CodeCanvas: Open Preview)"));
+			return;
+		}
+
+		const model = input.model ?? await input.resolve();
+		await model.toggleElementSelection(true);
+		notificationService.info(localize('inspector.active', "Click on any element in the preview to inspect it. Press Escape to stop."));
+
+		const listener = model.onDidSelectElement((data: IElementData) => {
+			showElementInfo(notificationService, data);
+		});
+
+		const activeListener = model.onDidChangeElementSelectionActive((active: boolean) => {
+			if (!active) {
+				listener.dispose();
+				activeListener.dispose();
+			}
+		});
+	}
+});
+
+registerAction2(class StopInspectAction extends Action2 {
+	constructor() {
+		super({
+			id: 'codecanvas.preview.stopInspect',
+			title: localize2('stopInspect', "CodeCanvas: Stop Inspect"),
+			category: Categories.View,
+			f1: true,
+			menu: {
+				id: MenuId.CommandPalette
+			}
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const browserViewWorkbenchService = accessor.get(IBrowserViewWorkbenchService);
+		const input = browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+		if (!input) { return; }
+
+		const model = input.model ?? await input.resolve();
+		await model.toggleElementSelection(false);
+	}
+});
+
+function showElementInfo(notificationService: INotificationService, data: IElementData): void {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(data.outerHTML, 'text/html');
+	const el = doc.body.firstElementChild;
+	const tagName = el?.tagName?.toLowerCase() ?? 'element';
+
+	const classes = data.attributes?.class ?? '';
+	const id = data.attributes?.id ?? '';
+	const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.split(' ').join('.') : ''}`;
+
+	const bounds = data.bounds;
+	const dims = data.dimensions;
+	const infoLines = [
+		localize('inspector.tag', "Tag: {0}", tagName.toUpperCase()),
+		localize('inspector.selector', "Selector: {0}", selector),
+		localize('inspector.dimensions', "Size: {0}x{1}px", bounds?.width ?? dims?.width ?? '?', bounds?.height ?? dims?.height ?? '?'),
+	];
+
+	if (data.innerText && data.innerText.trim()) {
+		infoLines.push(localize('inspector.text', "Text: \"{0}\"", data.innerText.trim().substring(0, 100)));
+	}
+
+	if (data.attributes) {
+		const attrs = Object.entries(data.attributes).filter(([k]) => k !== 'class' && k !== 'id');
+		if (attrs.length > 0) {
+			infoLines.push(localize('inspector.attrs', "Attributes: {0}", attrs.map(([k, v]) => `${k}="${v}"`).join(', ')));
+		}
+	}
+
+	if (data.ancestors && data.ancestors.length > 0) {
+		const ancestorPath = data.ancestors.map(a => a.tagName.toLowerCase()).join(' > ') + ' > ' + tagName;
+		infoLines.push(localize('inspector.path', "Path: {0}", ancestorPath));
+	}
+
+	notificationService.info(infoLines.join('\n'));
+}
 
 registerWorkbenchContribution2(CodeCanvasPreviewStatusContribution.ID, CodeCanvasPreviewStatusContribution, WorkbenchPhase.BlockRestore);
