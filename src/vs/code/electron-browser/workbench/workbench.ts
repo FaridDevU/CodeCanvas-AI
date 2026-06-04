@@ -241,6 +241,43 @@
 				}
 			}
 
+			// part: logo in the editor area
+			{
+				const editorLeft = (layoutInfo.sideBarSide === 'left' ? layoutInfo.activityBarWidth + layoutInfo.sideBarWidth : layoutInfo.activityBarWidth);
+				const editorWidth = window.innerWidth - layoutInfo.activityBarWidth - layoutInfo.sideBarWidth - layoutInfo.auxiliaryBarWidth;
+
+				const logoDiv = document.createElement('div');
+				logoDiv.style.position = 'absolute';
+				logoDiv.style.left = `${editorLeft}px`;
+				logoDiv.style.top = `${layoutInfo.titleBarHeight}px`;
+				logoDiv.style.width = `${editorWidth}px`;
+				logoDiv.style.height = `calc(100% - ${layoutInfo.titleBarHeight + layoutInfo.statusBarHeight}px)`;
+				logoDiv.style.display = 'flex';
+				logoDiv.style.alignItems = 'center';
+				logoDiv.style.justifyContent = 'center';
+				logoDiv.style.flexDirection = 'column';
+				logoDiv.style.gap = '12px';
+
+				const logoImg = document.createElement('img');
+				logoImg.src = 'vs/workbench/browser/media/code-icon.png';
+				logoImg.style.width = '96px';
+				logoImg.style.height = '96px';
+				logoImg.style.opacity = '0.4';
+
+				const logoText = document.createElement('div');
+				logoText.textContent = 'CodeCanvas AI';
+				logoText.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+				logoText.style.fontSize = '28px';
+				logoText.style.fontWeight = '300';
+				logoText.style.letterSpacing = '2px';
+				logoText.style.opacity = '0.4';
+				logoText.style.color = shellForeground ?? '#CCCCCC';
+
+				logoDiv.appendChild(logoImg);
+				logoDiv.appendChild(logoText);
+				splash.appendChild(logoDiv);
+			}
+
 			// part: statusbar
 			if (layoutInfo.statusBarHeight > 0) {
 				const statusDiv = document.createElement('div');
