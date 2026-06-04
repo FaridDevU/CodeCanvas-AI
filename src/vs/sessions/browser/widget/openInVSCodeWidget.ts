@@ -41,7 +41,7 @@ export class OpenInVSCodeTitleBarWidget extends BaseActionViewItem {
 		}
 
 		const label = this.action.label;
-		const hoverText = localize('openInVSCodeHover', "Open in VS Code Editor Window");
+		const hoverText = localize('openInVSCodeHover', "Open in CodeCanvas AI Editor Window");
 		container.setAttribute('aria-label', hoverText);
 		this._register(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), container, hoverText));
 
