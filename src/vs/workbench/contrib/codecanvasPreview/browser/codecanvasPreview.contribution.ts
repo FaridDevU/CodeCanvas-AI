@@ -27,8 +27,11 @@ import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContaine
 import { ViewPane, IViewPaneOptions } from '../../../browser/parts/views/viewPane.js';
 import { ITerminalService } from '../../terminal/browser/terminal.js';
 import { IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
+import { VSBuffer } from '../../../../base/common/buffer.js';
 import { IElementData } from '../../../../platform/browserView/common/browserView.js';
 import { Codicon } from '../../../../base/common/codicons.js';
+import { Severity } from '../../../../platform/notification/common/notification.js';
+import { generateDiff, createBackup, IDomDelta } from './EdicionVisual/diffEngine.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
@@ -773,5 +776,157 @@ registerAction2(class StopInspectAction extends Action2 {
 		currentElementData.set(null, undefined, undefined);
 	}
 });
+
+// Edicion visual + diffs
+let pendingDelta: IDomDelta | null = null;
+
+async function findSourceFile(elementData: IElementData, contextService: IWorkspaceContextService): Promise<string | null> {
+	const root = getWorkspaceRoot(contextService);
+	if (!root || !elementData.ancestors || elementData.ancestors.length === 0) {
+		return null;
+	}
+
+	const tag = elementData.ancestors[elementData.ancestors.length - 1]?.tagName?.toLowerCase();
+	if (tag === 'head' || elementData.url?.startsWith('http')) {
+		return null;
+	}
+
+	return URI.joinPath(root, 'styles.css').fsPath;
+}
+
+registerAction2(class EditCSSAction extends Action2 {
+	constructor() {
+		super({
+			id: 'codecanvas.preview.editCSS',
+			title: localize2('editCSS', "CodeCanvas: Edit CSS of Selected Element"),
+			category: Categories.View,
+			f1: true,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const elementData = currentElementData.get();
+		if (!elementData) {
+			accessor.get(INotificationService).info(
+				localize('editCSS.noElement', "Inspect an element first (CodeCanvas: Inspect Element)"));
+			return;
+		}
+
+		const quickInputService = accessor.get(IQuickInputService);
+		const notificationService = accessor.get(INotificationService);
+		const fileService = accessor.get(IFileService);
+		const contextService = accessor.get(IWorkspaceContextService);
+
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(elementData.outerHTML, 'text/html');
+		const el = doc.body.firstElementChild;
+		const tagName = el?.tagName?.toLowerCase() ?? 'element';
+
+		const classes = elementData.attributes?.class ?? '';
+		const id = elementData.attributes?.id ?? '';
+		const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.replace(/\s+/g, '.') : ''}`;
+
+		const stylesToEdit: Record<string, string> = {};
+		const currentStyles = elementData.computedStyles ?? {};
+		const editableProps = ['position', 'top', 'left', 'right', 'bottom', 'width', 'height',
+			'margin', 'padding', 'display', 'background-color', 'color', 'font-size', 'opacity', 'z-index'];
+
+		for (const prop of editableProps) {
+			if (currentStyles[prop]) {
+				stylesToEdit[prop] = currentStyles[prop];
+			}
+		}
+
+		const styleLines = Object.entries(stylesToEdit)
+			.map(([k, v]) => `${k}: ${v};`)
+			.join('\n');
+
+		const newStyles = await quickInputService.input({
+			title: localize('editCSS.title', "Edit CSS for {0}", selector),
+			prompt: localize('editCSS.prompt', "Edit CSS properties (one per line, format: property: value;)"),
+			value: styleLines
+		});
+
+		if (!newStyles) { return; }
+
+		const parsedStyles: Record<string, string> = {};
+		for (const line of newStyles.split('\n')) {
+			const match = line.trim().match(/^([a-z-]+)\s*:\s*(.+?);?\s*$/);
+			if (match) {
+				parsedStyles[match[1].trim()] = match[2].trim().replace(/;$/, '');
+			}
+		}
+
+		if (Object.keys(parsedStyles).length === 0) {
+			notificationService.warn(localize('editCSS.invalid', "No valid CSS properties found."));
+			return;
+		}
+
+		const originalStyles: Record<string, string> = {};
+		for (const prop of editableProps) {
+			if (currentStyles[prop]) {
+				originalStyles[prop] = currentStyles[prop];
+			}
+		}
+
+		const filePath = await findSourceFile(elementData, contextService) || '/project/styles.css';
+
+		const delta = await generateDiff({
+			filePath,
+			selector: `.${classes.split(' ')[0] || tagName}`,
+			originalStyles,
+			modifiedStyles: parsedStyles
+		}, fileService);
+
+		pendingDelta = delta;
+
+		notificationService.prompt(
+			Severity.Info,
+			localize('editCSS.diffTitle', "CSS Changes Proposed") + '\n\n' +
+			delta.changes.map(c => `${c.property}: ${c.oldValue} -> ${c.newValue}`).join('\n'),
+			[
+				{
+					label: localize('editCSS.accept', "Accept"),
+					run: async () => { await acceptDelta(fileService, notificationService, contextService); }
+				},
+				{
+					label: localize('editCSS.reject', "Reject"),
+					run: () => {
+						notificationService.info(localize('editCSS.rejected', "Changes rejected."));
+						pendingDelta = null;
+					}
+				},
+				{
+					label: localize('editCSS.showDiff', "Show Diff"),
+					run: () => {
+						notificationService.info(delta.diff);
+					}
+				}
+			]
+		);
+	}
+});
+
+async function acceptDelta(
+	fileService: IFileService,
+	notificationService: INotificationService,
+	contextService: IWorkspaceContextService
+): Promise<void> {
+	if (!pendingDelta) { return; }
+	const delta = pendingDelta;
+	pendingDelta = null;
+
+	const fileUri = URI.file(delta.filePath);
+	try {
+		const backupUri = await createBackup(fileUri, fileService);
+		notificationService.info(localize('editCSS.backup', "Backup created: {0}", backupUri.fsPath));
+
+		await fileService.writeFile(fileUri, VSBuffer.fromString(delta.modifiedContent));
+		notificationService.info(localize('editCSS.saved', "Changes applied to {0}.", delta.filePath));
+	} catch (e) {
+		notificationService.error(localize('editCSS.error', "Failed to write: {0}", (e as Error).message));
+	}
+}
 
 registerWorkbenchContribution2(CodeCanvasPreviewStatusContribution.ID, CodeCanvasPreviewStatusContribution, WorkbenchPhase.BlockRestore);
