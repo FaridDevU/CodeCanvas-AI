@@ -2,9 +2,8 @@ name: @@NAME@@
 version: '@@VERSION@@'
 summary: Code editing. Redefined.
 description: |
-  Visual Studio Code is a new choice of tool that combines the
-  simplicity of a code editor with what developers need for the core
-  edit-build-debug cycle.
+  CodeCanvas AI is an IDE for frontend developers that combines a code
+  editor with visual preview, DOM inspection and AI-assisted editing.
 
 architectures:
   - build-on: amd64
