@@ -164,6 +164,9 @@ import './contrib/webview/electron-browser/webview.contribution.js';
 // Browser
 import './contrib/browserView/electron-browser/browserView.contribution.js';
 
+// CodeCanvas AI
+import './contrib/codecanvasPreview/browser/codecanvasPreview.contribution.js';
+
 // Splash
 import './contrib/splash/electron-browser/splash.contribution.js';
 
