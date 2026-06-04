@@ -104,7 +104,7 @@
 			"problemMatcher": "$esbuild-watch"
 		},
 		{
-			"label": "VS Code - Build",
+			"label": "CodeCanvas AI - Build",
 			"dependsOn": [
 				"Core - Transpile",
 				"Core - Typecheck",
@@ -166,7 +166,7 @@
 			"problemMatcher": "$esbuild"
 		},
 		{
-			"label": "Kill VS Code - Build",
+			"label": "Kill CodeCanvas AI - Build",
 			"dependsOn": [
 				"Kill Core - Transpile",
 				"Kill Core - Typecheck",
@@ -177,21 +177,21 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Restart VS Code - Build",
+			"label": "Restart CodeCanvas AI - Build",
 			"dependsOn": [
-				"Kill VS Code - Build",
-				"VS Code - Build"
+				"Kill CodeCanvas AI - Build",
+				"CodeCanvas AI - Build"
 			],
 			"group": "build",
 			"dependsOrder": "sequence",
 			"problemMatcher": []
 		},
 		{
-			"label": "Kill VS Code - Build, Npm, VS Code - Build",
+			"label": "Kill CodeCanvas AI - Build, Npm, CodeCanvas AI - Build",
 			"dependsOn": [
-				"Kill VS Code - Build",
+				"Kill CodeCanvas AI - Build",
 				"npm: install",
-				"VS Code - Build"
+				"CodeCanvas AI - Build"
 			],
 			"group": "build",
 			"dependsOrder": "sequence",
@@ -265,8 +265,8 @@
 			},
 			"args": [
 				"--agents",
-				"--user-data-dir=${userHome}/.vscode-oss-dev",
-				"--extensions-dir=${userHome}/.vscode-oss-dev/extensions"
+				"--user-data-dir=${userHome}/.codecanvas-dev",
+				"--extensions-dir=${userHome}/.codecanvas-dev/extensions"
 			],
 			"problemMatcher": []
 		},
@@ -277,7 +277,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Run and Compile Agents - OSS",
+			"label": "Run and Compile CodeCanvas AI Agents",
 			"dependsOn": [
 				"Transpile Client",
 				"Run Dev Agents"
@@ -287,7 +287,7 @@
 			"problemMatcher": []
 		},
 		{
-			"label": "Run and Compile Code - OSS",
+			"label": "Run and Compile CodeCanvas AI",
 			"dependsOn": [
 				"Transpile Client",
 				"Run Dev"

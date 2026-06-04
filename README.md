@@ -36,12 +36,18 @@ aprueba, con backup previo.
 
 ## Requisitos para compilar
 
-VS Code se compila desde fuente; en Windows necesitas su toolchain:
+El proyecto se compila desde fuente; en Windows necesitas su toolchain:
 
-- [Node.js](https://nodejs.org) (ver `.nvmrc`)
-- Python 3
-- Herramientas de build de C++ (Visual Studio Build Tools) para módulos nativos
-- Git
+- **Node.js 24** (ver `.nvmrc`, probado con 24.14).
+- **Python 3** (lo usa node-gyp para compilar módulos nativos).
+- **Visual Studio con la carga de trabajo "Desktop development with C++"**
+  (incluye MSVC v143 y el Windows SDK). Sin el toolset de C++, `npm install`
+  falla al compilar módulos nativos como `@vscode/policy-watcher` y `node-pty`.
+- **Git**.
+
+> Nota: tener solo "C++ core features" no basta; node-gyp necesita el toolset
+> MSVC completo. En el Visual Studio Installer: Modificar -> Cargas de trabajo
+> -> "Desarrollo para el escritorio con C++".
 
 ---
 

@@ -235,7 +235,7 @@
 		{
 			"type": "chrome",
 			"request": "attach",
-			"name": "Attach to VS Code",
+			"name": "Attach to CodeCanvas AI",
 			"browserAttachLocation": "workspace",
 			"port": 9222,
 			"outFiles": [
@@ -249,7 +249,7 @@
 		{
 			"type": "chrome",
 			"request": "launch",
-			"name": "Launch VS Code Internal",
+			"name": "Launch CodeCanvas AI Internal",
 			"windows": {
 				"runtimeExecutable": "${workspaceFolder}/scripts/code.bat"
 			},
@@ -276,7 +276,7 @@
 				"--disable-features=CalculateNativeWinOcclusion",
 				"--disable-extension=vscode.vscode-api-tests"
 			],
-			"userDataDir": "${userHome}/.vscode-oss-dev",
+			"userDataDir": "${userHome}/.codecanvas-dev",
 			"webRoot": "${workspaceFolder}",
 			"cascadeTerminateToConfigurations": [
 				"Attach to Extension Host"
@@ -293,7 +293,7 @@
 		{
 			"type": "chrome",
 			"request": "launch",
-			"name": "Launch VS Code Agents Internal",
+			"name": "Launch CodeCanvas AI Agents Internal",
 			"windows": {
 				"runtimeExecutable": "${workspaceFolder}/scripts/code.bat"
 			},
@@ -322,7 +322,7 @@
 				"--disable-extension=vscode.vscode-api-tests",
 				"--agents"
 			],
-			"userDataDir": "${userHome}/.vscode-oss-dev",
+			"userDataDir": "${userHome}/.codecanvas-dev",
 			"webRoot": "${workspaceFolder}",
 			"cascadeTerminateToConfigurations": [
 				"Attach to Extension Host"
@@ -340,7 +340,7 @@
 			// To debug observables you also need the extension "ms-vscode.debug-value-editor"
 			"type": "chrome",
 			"request": "launch",
-			"name": "Launch VS Code Internal (Hot Reload)",
+			"name": "Launch CodeCanvas AI Internal (Hot Reload)",
 			"windows": {
 				"runtimeExecutable": "${workspaceFolder}/scripts/code.bat"
 			},
@@ -370,7 +370,7 @@
 				"--disable-features=CalculateNativeWinOcclusion",
 				"--disable-extension=vscode.vscode-api-tests"
 			],
-			"userDataDir": "${userHome}/.vscode-oss-dev",
+			"userDataDir": "${userHome}/.codecanvas-dev",
 			"webRoot": "${workspaceFolder}",
 			"cascadeTerminateToConfigurations": [
 				"Attach to Extension Host"
@@ -388,7 +388,7 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "VS Code Server (Web)",
+			"name": "CodeCanvas AI Server (Web)",
 			"runtimeExecutable": "${workspaceFolder}/scripts/code-server.sh",
 			"windows": {
 				"runtimeExecutable": "${workspaceFolder}/scripts/code-server.bat",
@@ -404,7 +404,7 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "VS Code Agent Host",
+			"name": "CodeCanvas AI Agent Host",
 			"outputCapture": "std",
 			"program": "./scripts/code-agent-host.js",
 			"args": ["--port", "7777", "--without-connection-token"],
@@ -443,7 +443,7 @@
 			"request": "launch",
 			"outFiles": [],
 			"perScriptSourcemaps": "yes",
-			"name": "VS Code Server (Web, Chrome)",
+			"name": "CodeCanvas AI Server (Web, Chrome)",
 			"url": "http://localhost:8080?tkn=dev-token",
 			"preLaunchTask": "Run code server",
 			"presentation": {
@@ -456,7 +456,7 @@
 			"request": "launch",
 			"outFiles": [],
 			"perScriptSourcemaps": "yes",
-			"name": "VS Code Server (Web, Edge)",
+			"name": "CodeCanvas AI Server (Web, Edge)",
 			"url": "http://localhost:8080?tkn=dev-token",
 			"pauseForSourceMap": false,
 			"preLaunchTask": "Run code server",
@@ -470,7 +470,7 @@
 			"request": "launch",
 			"outFiles": [],
 			"perScriptSourcemaps": "yes",
-			"name": "VS Code Web (Chrome)",
+			"name": "CodeCanvas AI Web (Chrome)",
 			"url": "http://localhost:8080",
 			"preLaunchTask": "Run code web",
 			"presentation": {
@@ -483,7 +483,7 @@
 			"request": "launch",
 			"outFiles": [],
 			"perScriptSourcemaps": "yes",
-			"name": "VS Code Web (Edge)",
+			"name": "CodeCanvas AI Web (Edge)",
 			"url": "http://localhost:8080",
 			"pauseForSourceMap": false,
 			"preLaunchTask": "Run code web",
@@ -578,12 +578,12 @@
 			"request": "launch",
 			"name": "Run Unit Tests",
 			"program": "${workspaceFolder}/test/unit/electron/index.js",
-			"runtimeExecutable": "${workspaceFolder}/.build/electron/Code - OSS.app/Contents/MacOS/Code - OSS",
+			"runtimeExecutable": "${workspaceFolder}/.build/electron/CodeCanvas AI.app/Contents/MacOS/CodeCanvas AI",
 			"windows": {
-				"runtimeExecutable": "${workspaceFolder}/.build/electron/Code - OSS.exe"
+				"runtimeExecutable": "${workspaceFolder}/.build/electron/CodeCanvas AI.exe"
 			},
 			"linux": {
-				"runtimeExecutable": "${workspaceFolder}/.build/electron/code-oss"
+				"runtimeExecutable": "${workspaceFolder}/.build/electron/codecanvas"
 			},
 			"outputCapture": "std",
 			"args": [
@@ -594,7 +594,7 @@
 				"${workspaceFolder}/out/**/*.js"
 			],
 			"cascadeTerminateToConfigurations": [
-				"Attach to VS Code"
+				"Attach to CodeCanvas AI"
 			],
 			"env": {
 				"MOCHA_COLORS": "true"
@@ -608,15 +608,15 @@
 			"request": "launch",
 			"name": "Run Unit Tests For Current File",
 			"program": "${workspaceFolder}/test/unit/electron/index.js",
-			"runtimeExecutable": "${workspaceFolder}/.build/electron/Code - OSS.app/Contents/MacOS/Code - OSS",
+			"runtimeExecutable": "${workspaceFolder}/.build/electron/CodeCanvas AI.app/Contents/MacOS/CodeCanvas AI",
 			"windows": {
-				"runtimeExecutable": "${workspaceFolder}/.build/electron/Code - OSS.exe"
+				"runtimeExecutable": "${workspaceFolder}/.build/electron/CodeCanvas AI.exe"
 			},
 			"linux": {
-				"runtimeExecutable": "${workspaceFolder}/.build/electron/code-oss"
+				"runtimeExecutable": "${workspaceFolder}/.build/electron/codecanvas"
 			},
 			"cascadeTerminateToConfigurations": [
-				"Attach to VS Code"
+				"Attach to CodeCanvas AI"
 			],
 			"outputCapture": "std",
 			"args": [
@@ -644,7 +644,7 @@
 			"timeout": 240000,
 			"args": [
 				"-l",
-				"${workspaceFolder}/.build/electron/Code - OSS.app/Contents/MacOS/Code - OSS"
+				"${workspaceFolder}/.build/electron/CodeCanvas AI.app/Contents/MacOS/CodeCanvas AI"
 			],
 			"outFiles": [
 				"${cwd}/out/**/*.js"
@@ -722,10 +722,10 @@
 	],
 	"compounds": [
 		{
-			"name": "VS Code",
+			"name": "CodeCanvas AI",
 			"stopAll": true,
 			"configurations": [
-				"Launch VS Code Internal",
+				"Launch CodeCanvas AI Internal",
 				"Attach to Main Process",
 				"Attach to Extension Host",
 				"Attach to Shared Process",
@@ -738,10 +738,10 @@
 			}
 		},
 		{
-			"name": "VS Code Agents",
+			"name": "CodeCanvas AI Agents",
 			"stopAll": true,
 			"configurations": [
-				"Launch VS Code Agents Internal",
+				"Launch CodeCanvas AI Agents Internal",
 				"Attach to Main Process",
 				"Attach to Extension Host",
 				"Attach to Shared Process",
@@ -754,10 +754,10 @@
 			}
 		},
 		{
-			"name": "VS Code (Hot Reload)",
+			"name": "CodeCanvas AI (Hot Reload)",
 			"stopAll": true,
 			"configurations": [
-				"Launch VS Code Internal (Hot Reload)",
+				"Launch CodeCanvas AI Internal (Hot Reload)",
 				"Attach to Main Process",
 				"Attach to Extension Host",
 				"Attach to Shared Process",
@@ -771,7 +771,7 @@
 		{
 			"name": "Search, Renderer, and Main processes",
 			"configurations": [
-				"Launch VS Code Internal",
+				"Launch CodeCanvas AI Internal",
 				"Attach to Main Process",
 				"Attach to Search Process"
 			],
@@ -783,7 +783,7 @@
 		{
 			"name": "Renderer, Extension Host, and Main processes",
 			"configurations": [
-				"Launch VS Code Internal",
+				"Launch CodeCanvas AI Internal",
 				"Attach to Main Process",
 				"Attach to Extension Host"
 			],
@@ -795,7 +795,7 @@
 		{
 			"name": "Debug Unit Tests",
 			"configurations": [
-				"Attach to VS Code",
+				"Attach to CodeCanvas AI",
 				"Run Unit Tests"
 			],
 			"presentation": {
@@ -806,7 +806,7 @@
 		{
 			"name": "Debug Unit Tests (Current File)",
 			"configurations": [
-				"Attach to VS Code",
+				"Attach to CodeCanvas AI",
 				"Run Unit Tests For Current File"
 			],
 			"presentation": {
@@ -818,7 +818,7 @@
 			"name": "Renderer and Main processes",
 			"stopAll": true,
 			"configurations": [
-				"Launch VS Code Internal",
+				"Launch CodeCanvas AI Internal",
 				"Attach to Main Process"
 			],
 			"preLaunchTask": "Ensure Prelaunch Dependencies"
@@ -827,7 +827,7 @@
 			"name": "Renderer and Agent Host processes",
 			"stopAll": true,
 			"configurations": [
-				"Launch VS Code Internal",
+				"Launch CodeCanvas AI Internal",
 				"Attach to Main Process",
 				"Attach to Agent Host Process"
 			],

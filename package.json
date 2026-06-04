@@ -1,9 +1,9 @@
 {
-  "name": "code-oss-dev",
+  "name": "codecanvas-ai-dev",
   "version": "1.124.0",
   "distro": "31bfc4c2834d5d34dcfb8dfe445e13ba25a92f54",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "CodeCanvas AI"
   },
   "license": "MIT",
   "main": "./out/main.js",
@@ -47,6 +47,7 @@
     "precommit": "node --experimental-strip-types build/hygiene.ts",
     "gulp": "node --experimental-strip-types --max-old-space-size=8192 ./node_modules/gulp/bin/gulp.js",
     "electron": "node build/lib/electron.ts",
+    "start:codecanvas": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codecanvas-dev.ps1",
     "7z": "7z",
     "update-grammars": "node build/npm/update-all-grammars.ts",
     "update-localization-extension": "node build/npm/update-localization-extension.ts",
@@ -208,6 +209,7 @@
     "eslint-plugin-header": "3.1.1",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "^50.3.1",
+    "esbuild": "0.27.2",
     "event-stream": "3.3.4",
     "fancy-log": "^1.3.3",
     "glob": "^5.0.13",
@@ -220,11 +222,14 @@
     "gulp-gunzip": "^1.0.0",
     "gulp-gzip": "^1.4.2",
     "gulp-json-editor": "^2.5.0",
+    "gulp-merge-json": "^2.2.1",
     "gulp-plumber": "^1.2.0",
     "gulp-rename": "^1.2.0",
     "gulp-replace": "^0.5.4",
+    "gulp-sort": "^2.0.0",
     "gulp-sourcemaps": "^3.0.0",
     "gulp-svgmin": "^4.1.0",
+    "gulp-vinyl-zip": "^2.5.0",
     "husky": "^0.13.1",
     "innosetup": "^6.4.1",
     "istanbul-lib-coverage": "^3.2.0",
@@ -272,10 +277,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/microsoft/vscode.git"
+    "url": "https://github.com/FaridDevU/CodeCanvas-AI.git"
   },
   "bugs": {
-    "url": "https://github.com/microsoft/vscode/issues"
+    "url": "https://github.com/FaridDevU/CodeCanvas-AI/issues"
   },
   "optionalDependencies": {
     "windows-foreground-love": "0.6.1"
