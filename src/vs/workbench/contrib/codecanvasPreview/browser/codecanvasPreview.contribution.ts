@@ -837,7 +837,7 @@ function promptDelta(
 	);
 }
 
-async function findSourceFile(elementData: IElementData, contextService: IWorkspaceContextService): Promise<string | null> {
+async function findSourceFile(elementData: IElementData, contextService: IWorkspaceContextService, fileService: IFileService): Promise<string | null> {
 	const root = getWorkspaceRoot(contextService);
 	if (!root || !elementData.ancestors || elementData.ancestors.length === 0) {
 		return null;
@@ -848,7 +848,54 @@ async function findSourceFile(elementData: IElementData, contextService: IWorksp
 		return null;
 	}
 
-	return URI.joinPath(root, 'styles.css').fsPath;
+	const candidates: URI[] = [];
+	try {
+		if (elementData.url?.startsWith('file:')) {
+			const pageUri = URI.parse(elementData.url);
+			const pageDir = URI.joinPath(pageUri, '..');
+			candidates.push(URI.joinPath(pageDir, 'styles.css'));
+		}
+	} catch {
+		// Ignore invalid page URLs and continue with workspace candidates.
+	}
+
+	candidates.push(
+		URI.joinPath(root, 'styles.css'),
+		URI.joinPath(root, 'style.css'),
+		URI.joinPath(root, 'src', 'styles.css'),
+		URI.joinPath(root, 'src', 'style.css')
+	);
+
+	for (const candidate of candidates) {
+		if (await fileService.exists(candidate)) {
+			return candidate.fsPath;
+		}
+	}
+
+	return (await findFirstCssFile(root, fileService))?.fsPath ?? null;
+}
+
+async function findFirstCssFile(root: URI, fileService: IFileService): Promise<URI | null> {
+	const ignored = new Set(['node_modules', 'out', 'dist', 'build', '.git']);
+	const queue: URI[] = [root];
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		let stat;
+		try {
+			stat = await fileService.resolve(current);
+		} catch {
+			continue;
+		}
+		for (const child of stat.children ?? []) {
+			if (child.name.endsWith('.css') && child.isFile) {
+				return child.resource;
+			}
+			if (child.isDirectory && !ignored.has(child.name)) {
+				queue.push(child.resource);
+			}
+		}
+	}
+	return null;
 }
 
 registerAction2(class MoveResizeElementAction extends Action2 {
@@ -894,7 +941,11 @@ registerAction2(class MoveResizeElementAction extends Action2 {
 			if (visualDelta.elementId !== elementData.elementId) {
 				return;
 			}
-			const filePath = await findSourceFile(elementData, contextService) || '/project/styles.css';
+			const filePath = await findSourceFile(elementData, contextService, fileService);
+			if (!filePath) {
+				notificationService.warn(localize('visualEdit.noCssFile', "No CSS file was found in the workspace for this element."));
+				return;
+			}
 			const delta = await generateDiff({
 				filePath,
 				selector: getElementSelector(elementData),
@@ -990,7 +1041,11 @@ registerAction2(class EditCSSAction extends Action2 {
 			}
 		}
 
-		const filePath = await findSourceFile(elementData, contextService) || '/project/styles.css';
+		const filePath = await findSourceFile(elementData, contextService, fileService);
+		if (!filePath) {
+			notificationService.warn(localize('editCSS.noCssFile', "No CSS file was found in the workspace for this element."));
+			return;
+		}
 
 		const delta = await generateDiff({
 			filePath,
