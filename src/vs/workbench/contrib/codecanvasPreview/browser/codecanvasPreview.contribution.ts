@@ -791,6 +791,52 @@ registerAction2(class StopInspectAction extends Action2 {
 // Edicion visual + diffs
 let pendingDelta: IDomDelta | null = null;
 
+function getElementSelector(elementData: IElementData): string {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(elementData.outerHTML, 'text/html');
+	const el = doc.body.firstElementChild;
+	const tagName = el?.tagName?.toLowerCase() ?? 'element';
+	const classes = elementData.attributes?.class ?? '';
+	const firstClass = classes.split(/\s+/).filter(Boolean)[0];
+	return firstClass ? `.${firstClass}` : tagName;
+}
+
+function promptDelta(
+	delta: IDomDelta,
+	fileService: IFileService,
+	notificationService: INotificationService,
+	contextService: IWorkspaceContextService,
+	onReject?: () => void
+): void {
+	pendingDelta = delta;
+
+	notificationService.prompt(
+		Severity.Info,
+		localize('editCSS.diffTitle', "CSS Changes Proposed") + '\n\n' +
+		delta.changes.map(c => `${c.property}: ${c.oldValue} -> ${c.newValue}`).join('\n'),
+		[
+			{
+				label: localize('editCSS.accept', "Accept"),
+				run: async () => { await acceptDelta(fileService, notificationService, contextService); }
+			},
+			{
+				label: localize('editCSS.reject', "Reject"),
+				run: () => {
+					onReject?.();
+					notificationService.info(localize('editCSS.rejected', "Changes rejected."));
+					pendingDelta = null;
+				}
+			},
+			{
+				label: localize('editCSS.showDiff', "Show Diff"),
+				run: () => {
+					notificationService.info(delta.diff);
+				}
+			}
+		]
+	);
+}
+
 async function findSourceFile(elementData: IElementData, contextService: IWorkspaceContextService): Promise<string | null> {
 	const root = getWorkspaceRoot(contextService);
 	if (!root || !elementData.ancestors || elementData.ancestors.length === 0) {
@@ -804,6 +850,65 @@ async function findSourceFile(elementData: IElementData, contextService: IWorksp
 
 	return URI.joinPath(root, 'styles.css').fsPath;
 }
+
+registerAction2(class MoveResizeElementAction extends Action2 {
+	constructor() {
+		super({
+			id: 'codecanvas.preview.moveResizeElement',
+			title: localize2('moveResizeElement', "CodeCanvas: Move/Resize Selected Element"),
+			category: Categories.View,
+			f1: true,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const elementData = currentElementData.get();
+		const notificationService = accessor.get(INotificationService);
+		if (!elementData?.elementId) {
+			notificationService.info(localize('visualEdit.noElement', "Inspect an element first (CodeCanvas: Inspect Element)"));
+			return;
+		}
+
+		const currentStyles = elementData.computedStyles ?? {};
+		const position = (currentStyles['position'] ?? '').toLowerCase();
+		if (position !== 'absolute' && position !== 'fixed') {
+			notificationService.info(localize('visualEdit.absoluteOnly',
+				"Visual editing currently supports only elements with position: absolute or fixed (this one is '{0}').",
+				position || 'static'));
+			return;
+		}
+
+		const browserViewWorkbenchService = accessor.get(IBrowserViewWorkbenchService);
+		const fileService = accessor.get(IFileService);
+		const contextService = accessor.get(IWorkspaceContextService);
+		const input = browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+		if (!input) {
+			notificationService.info(localize('visualEdit.noPreview', "Open a preview first (CodeCanvas: Open Preview)"));
+			return;
+		}
+
+		const model = input.model ?? await input.resolve();
+		const listener = model.onDidCommitVisualEdit(async visualDelta => {
+			listener.dispose();
+			if (visualDelta.elementId !== elementData.elementId) {
+				return;
+			}
+			const filePath = await findSourceFile(elementData, contextService) || '/project/styles.css';
+			const delta = await generateDiff({
+				filePath,
+				selector: getElementSelector(elementData),
+				originalStyles: visualDelta.originalStyles,
+				modifiedStyles: visualDelta.modifiedStyles
+			}, fileService);
+			promptDelta(delta, fileService, notificationService, contextService, () => {
+				void model.reload(true);
+			});
+		});
+		await model.toggleVisualEdit(elementData.elementId, true);
+		notificationService.info(localize('visualEdit.active', "Drag the element to move it, or drag the corner handle to resize it. Press Escape to cancel."));
+	}
+});
 
 registerAction2(class EditCSSAction extends Action2 {
 	constructor() {
@@ -829,14 +934,7 @@ registerAction2(class EditCSSAction extends Action2 {
 		const fileService = accessor.get(IFileService);
 		const contextService = accessor.get(IWorkspaceContextService);
 
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(elementData.outerHTML, 'text/html');
-		const el = doc.body.firstElementChild;
-		const tagName = el?.tagName?.toLowerCase() ?? 'element';
-
-		const classes = elementData.attributes?.class ?? '';
-		const id = elementData.attributes?.id ?? '';
-		const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.replace(/\s+/g, '.') : ''}`;
+		const selector = getElementSelector(elementData);
 
 		const stylesToEdit: Record<string, string> = {};
 		const currentStyles = elementData.computedStyles ?? {};
@@ -896,37 +994,12 @@ registerAction2(class EditCSSAction extends Action2 {
 
 		const delta = await generateDiff({
 			filePath,
-			selector: `.${classes.split(' ')[0] || tagName}`,
+			selector,
 			originalStyles,
 			modifiedStyles: parsedStyles
 		}, fileService);
 
-		pendingDelta = delta;
-
-		notificationService.prompt(
-			Severity.Info,
-			localize('editCSS.diffTitle', "CSS Changes Proposed") + '\n\n' +
-			delta.changes.map(c => `${c.property}: ${c.oldValue} -> ${c.newValue}`).join('\n'),
-			[
-				{
-					label: localize('editCSS.accept', "Accept"),
-					run: async () => { await acceptDelta(fileService, notificationService, contextService); }
-				},
-				{
-					label: localize('editCSS.reject', "Reject"),
-					run: () => {
-						notificationService.info(localize('editCSS.rejected', "Changes rejected."));
-						pendingDelta = null;
-					}
-				},
-				{
-					label: localize('editCSS.showDiff', "Show Diff"),
-					run: () => {
-						notificationService.info(delta.diff);
-					}
-				}
-			]
-		);
+		promptDelta(delta, fileService, notificationService, contextService);
 	}
 });
 

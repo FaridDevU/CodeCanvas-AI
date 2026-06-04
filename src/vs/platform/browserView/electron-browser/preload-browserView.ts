@@ -7,7 +7,7 @@
 /* eslint-disable no-restricted-syntax */
 
 // Only `import type` is allowed in preload scripts — Electron preloads cannot resolve module imports at runtime.
-import type { IBrowserViewTheme, IBrowserViewRect } from '../common/browserView.js';
+import type { IBrowserViewTheme, IBrowserViewRect, IVisualEditDelta } from '../common/browserView.js';
 
 /**
  * Preload script for pages loaded in Integrated Browser
@@ -128,6 +128,7 @@ function init() {
 		rect => ipcRenderer.send('vscode:browserView:areaPicked', rect),
 		() => ipcRenderer.send('vscode:browserView:areaPickStopped')
 	);
+	const visualEditor = new VisualElementEditor(delta => ipcRenderer.send('vscode:browserView:visualEditCommitted', delta));
 
 	const trackedElementsById = new Map<string, WeakRef<Element>>();
 	const finalizationRegistry = new FinalizationRegistry<string>(id => {
@@ -176,6 +177,15 @@ function init() {
 	});
 	ipcRenderer.on('vscode:browserView:stopAreaPicker', (_event: unknown) => {
 		areaPicker.stop();
+	});
+	ipcRenderer.on('vscode:browserView:startVisualEdit', (_event: unknown, { elementId }: { elementId: string }) => {
+		const element = getElement(elementId);
+		if (element instanceof HTMLElement) {
+			visualEditor.start(elementId, element);
+		}
+	});
+	ipcRenderer.on('vscode:browserView:stopVisualEdit', (_event: unknown) => {
+		visualEditor.stop();
 	});
 	ipcRenderer.on('vscode:browserView:highlightElement', (_event: unknown, { elementId }: { elementId: string }) => {
 		const element = getElement(elementId);
@@ -771,6 +781,192 @@ class ElementPicker {
 		host.style.setProperty('--vscode-button-background', theme?.buttonBackground ?? null);
 		host.style.setProperty('--vscode-button-foreground', theme?.buttonForeground ?? null);
 		host.style.setProperty('--pick-font', theme?.font ?? null);
+	}
+}
+
+class VisualElementEditor {
+	private _target: HTMLElement | undefined;
+	private _elementId: string | undefined;
+	private _originalStyles: Record<string, string> | undefined;
+	private _dragStart: { x: number; y: number; left: number; top: number; width: number; height: number; mode: 'move' | 'resize' } | undefined;
+
+	private readonly _shadowHost: HTMLDivElement;
+	private readonly _box: HTMLDivElement;
+
+	constructor(private readonly _onCommit: (delta: IVisualEditDelta) => void) {
+		const shadowHost = document.createElement('div');
+		shadowHost.setAttribute('data-vscode-visual-edit-host', '');
+		shadowHost.style.cssText = 'position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647; pointer-events: none;';
+		const root = shadowHost.attachShadow({ mode: 'closed' });
+		root.appendChild(VisualElementEditor._buildStyle());
+		this._shadowHost = shadowHost;
+
+		const box = document.createElement('div');
+		box.className = 'box';
+		root.appendChild(box);
+		this._box = box;
+
+		const handle = document.createElement('div');
+		handle.className = 'handle';
+		box.appendChild(handle);
+
+		box.addEventListener('pointerdown', e => this._onPointerDown(e, 'move'));
+		handle.addEventListener('pointerdown', e => this._onPointerDown(e, 'resize'));
+		window.addEventListener('pointermove', this._onPointerMove, true);
+		window.addEventListener('pointerup', this._onPointerUp, true);
+		window.addEventListener('keydown', this._onKeyDown, true);
+		window.addEventListener('scroll', () => this._render(), { passive: true, capture: true });
+		window.addEventListener('resize', () => this._render());
+	}
+
+	start(elementId: string, target: HTMLElement): void {
+		const styles = window.getComputedStyle(target);
+		const position = styles.position.toLowerCase();
+		if (position !== 'absolute' && position !== 'fixed') {
+			return;
+		}
+
+		this.stop();
+		this._target = target;
+		this._elementId = elementId;
+		this._originalStyles = {
+			position,
+			left: styles.left,
+			top: styles.top,
+			width: styles.width,
+			height: styles.height
+		};
+
+		if (!this._shadowHost.parentNode) {
+			document.documentElement.appendChild(this._shadowHost);
+		}
+		this._render();
+	}
+
+	stop(): void {
+		this._dragStart = undefined;
+		this._target = undefined;
+		this._elementId = undefined;
+		this._originalStyles = undefined;
+		this._shadowHost.remove();
+	}
+
+	private _onPointerDown(e: PointerEvent, mode: 'move' | 'resize'): void {
+		if (!this._target) {
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+
+		const styles = window.getComputedStyle(this._target);
+		this._dragStart = {
+			x: e.clientX,
+			y: e.clientY,
+			left: VisualElementEditor._parsePx(styles.left, this._target.offsetLeft),
+			top: VisualElementEditor._parsePx(styles.top, this._target.offsetTop),
+			width: VisualElementEditor._parsePx(styles.width, this._target.offsetWidth),
+			height: VisualElementEditor._parsePx(styles.height, this._target.offsetHeight),
+			mode
+		};
+		this._box.setPointerCapture(e.pointerId);
+	}
+
+	private _onPointerMove = (e: PointerEvent): void => {
+		if (!this._target || !this._dragStart) {
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+
+		const dx = e.clientX - this._dragStart.x;
+		const dy = e.clientY - this._dragStart.y;
+		if (this._dragStart.mode === 'move') {
+			this._target.style.left = `${Math.round(this._dragStart.left + dx)}px`;
+			this._target.style.top = `${Math.round(this._dragStart.top + dy)}px`;
+		} else {
+			this._target.style.width = `${Math.max(1, Math.round(this._dragStart.width + dx))}px`;
+			this._target.style.height = `${Math.max(1, Math.round(this._dragStart.height + dy))}px`;
+		}
+		this._render();
+	};
+
+	private _onPointerUp = (e: PointerEvent): void => {
+		if (!this._target || !this._dragStart || !this._elementId || !this._originalStyles) {
+			return;
+		}
+		e.preventDefault();
+		e.stopPropagation();
+
+		this._dragStart = undefined;
+		const styles = window.getComputedStyle(this._target);
+		this._onCommit({
+			elementId: this._elementId,
+			originalStyles: this._originalStyles,
+			modifiedStyles: {
+				position: styles.position,
+				left: styles.left,
+				top: styles.top,
+				width: styles.width,
+				height: styles.height
+			}
+		});
+		this.stop();
+	};
+
+	private _onKeyDown = (e: KeyboardEvent): void => {
+		if (this._target && e.key === 'Escape') {
+			this.stop();
+			e.preventDefault();
+			e.stopPropagation();
+		}
+	};
+
+	private _render(): void {
+		if (!this._target) {
+			return;
+		}
+		const rect = this._target.getBoundingClientRect();
+		const scrollX = window.scrollX || 0;
+		const scrollY = window.scrollY || 0;
+		this._box.style.left = `${rect.left + scrollX}px`;
+		this._box.style.top = `${rect.top + scrollY}px`;
+		this._box.style.width = `${rect.width}px`;
+		this._box.style.height = `${rect.height}px`;
+	}
+
+	private static _parsePx(value: string, fallback: number): number {
+		const parsed = Number.parseFloat(value);
+		return Number.isFinite(parsed) ? parsed : fallback;
+	}
+
+	private static _buildStyle(): HTMLStyleElement {
+		const style = document.createElement('style');
+		style.textContent = `
+			:host {
+				all: initial;
+				pointer-events: none !important;
+			}
+			.box {
+				position: absolute;
+				box-sizing: border-box;
+				border: 2px solid #228df2;
+				background: rgba(34, 141, 242, 0.08);
+				cursor: move;
+				pointer-events: auto;
+			}
+			.handle {
+				position: absolute;
+				box-sizing: border-box;
+				right: -5px;
+				bottom: -5px;
+				width: 10px;
+				height: 10px;
+				border: 1px solid white;
+				background: #228df2;
+				cursor: nwse-resize;
+			}
+		`;
+		return style;
 	}
 }
 

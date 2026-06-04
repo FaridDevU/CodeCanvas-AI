@@ -5,7 +5,7 @@
 
 import { Emitter, Event } from '../../../base/common/event.js';
 import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../base/common/lifecycle.js';
-import { IElementData, IElementAncestor, IBrowserViewTheme } from '../common/browserView.js';
+import { IElementData, IElementAncestor, IBrowserViewTheme, IVisualEditDelta } from '../common/browserView.js';
 import { collapseToShorthands, formatMatchedStyles, keyComputedProperties, type IMatchedStyles } from '../common/cssHelpers.js';
 import { ICDPConnection } from '../common/cdp/types.js';
 
@@ -108,6 +108,9 @@ export class BrowserViewFrameInspector extends Disposable {
 	private readonly _onDidInspectElement = this._register(new Emitter<IElementData>());
 	readonly onDidInspectElement: Event<IElementData> = this._onDidInspectElement.event;
 
+	private readonly _onDidCommitVisualEdit = this._register(new Emitter<IVisualEditDelta>());
+	readonly onDidCommitVisualEdit: Event<IVisualEditDelta> = this._onDidCommitVisualEdit.event;
+
 	private readonly _onDidStopPicking = this._register(new Emitter<void>());
 	readonly onDidStopPicking: Event<void> = this._onDidStopPicking.event;
 
@@ -197,6 +200,15 @@ export class BrowserViewFrameInspector extends Disposable {
 		frame.ipc.on('vscode:browserView:elementPickStopped', onPickStopped);
 		this._register({ dispose: () => frame.ipc.removeListener('vscode:browserView:elementPickStopped', onPickStopped) });
 
+		const onVisualEditCommitted = (event: Electron.IpcMainEvent, delta: IVisualEditDelta) => {
+			if (!delta?.elementId || event.senderFrame !== this.frame) {
+				return;
+			}
+			this._onDidCommitVisualEdit.fire(delta);
+		};
+		frame.ipc.on('vscode:browserView:visualEditCommitted', onVisualEditCommitted);
+		this._register({ dispose: () => frame.ipc.removeListener('vscode:browserView:visualEditCommitted', onVisualEditCommitted) });
+
 		this._enableDomains().catch(() => { });
 	}
 
@@ -285,7 +297,15 @@ export class BrowserViewFrameInspector extends Disposable {
 			throw new Error(`Element not found: ${elementId}`);
 		}
 
-		return this.extractNodeData({ objectId: result.objectId });
+		return { ...await this.extractNodeData({ objectId: result.objectId }), elementId };
+	}
+
+	startVisualEdit(elementId: string): void {
+		this.frame.postMessage('vscode:browserView:startVisualEdit', { elementId });
+	}
+
+	stopVisualEdit(): void {
+		this.frame.postMessage('vscode:browserView:stopVisualEdit', {});
 	}
 
 	/**

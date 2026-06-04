@@ -65,6 +65,7 @@ export interface IElementAncestor {
 }
 
 export interface IElementData {
+	readonly elementId?: string;
 	readonly url?: string;
 	readonly outerHTML: string;
 	readonly computedStyle: string;
@@ -74,6 +75,12 @@ export interface IElementData {
 	readonly computedStyles?: Record<string, string>;
 	readonly dimensions?: { readonly top: number; readonly left: number; readonly width: number; readonly height: number };
 	readonly innerText?: string;
+}
+
+export interface IVisualEditDelta {
+	readonly elementId: string;
+	readonly originalStyles: Record<string, string>;
+	readonly modifiedStyles: Record<string, string>;
 }
 
 export interface IBrowserViewRect {
@@ -345,6 +352,7 @@ export interface IBrowserViewService {
 	onDynamicDidFindInPage(id: string): Event<IBrowserViewFindInPageResult>;
 	onDynamicDidClose(id: string): Event<void>;
 	onDynamicDidSelectElement(id: string): Event<IElementData>;
+	onDynamicDidCommitVisualEdit(id: string): Event<IVisualEditDelta>;
 	onDynamicDidChangeElementSelectionActive(id: string): Event<boolean>;
 	/**
 	 * Fires exactly once per area-selection session, terminating it. Receives the user-drawn
@@ -548,6 +556,12 @@ export interface IBrowserViewService {
 	 * @param enabled Whether to enable or disable. Omit to toggle.
 	 */
 	toggleElementSelection(id: string, enabled?: boolean): Promise<void>;
+
+	/**
+	 * Toggle visual drag/resize editing for a tracked element.
+	 * Edits are delivered via {@link onDynamicDidCommitVisualEdit}.
+	 */
+	toggleVisualEdit(id: string, elementId: string, enabled?: boolean): Promise<void>;
 
 	/**
 	 * Toggle drag-to-select area picking on the top frame of a browser view.

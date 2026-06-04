@@ -5,7 +5,7 @@
 
 import { Emitter, Event } from '../../../base/common/event.js';
 import { Disposable, IDisposable, MutableDisposable } from '../../../base/common/lifecycle.js';
-import { IElementData, IBrowserViewTheme, IBrowserViewRect } from '../common/browserView.js';
+import { IElementData, IBrowserViewTheme, IBrowserViewRect, IVisualEditDelta } from '../common/browserView.js';
 import { ICDPConnection } from '../common/cdp/types.js';
 import type { BrowserView } from './browserView.js';
 import { BrowserViewFrameInspector } from './browserViewFrameInspector.js';
@@ -48,6 +48,9 @@ export class BrowserViewInspector extends Disposable {
 	private readonly _onDidSelectElement = this._register(new Emitter<IElementData>());
 	readonly onDidSelectElement: Event<IElementData> = this._onDidSelectElement.event;
 
+	private readonly _onDidCommitVisualEdit = this._register(new Emitter<IVisualEditDelta>());
+	readonly onDidCommitVisualEdit: Event<IVisualEditDelta> = this._onDidCommitVisualEdit.event;
+
 	private readonly _onDidChangeElementSelectionActive = this._register(new Emitter<boolean>());
 	readonly onDidChangeElementSelectionActive: Event<boolean> = this._onDidChangeElementSelectionActive.event;
 
@@ -74,6 +77,7 @@ export class BrowserViewInspector extends Disposable {
 	get isAreaSelectionActive(): boolean { return this._areaSelectionActive; }
 
 	private readonly _activeAreaSelection = this._register(new MutableDisposable<IActiveSelection>());
+	private readonly _activeVisualEdit = this._register(new MutableDisposable<IActiveSelection>());
 
 	private readonly _registry = this._register(new FrameInspectorRegistry());
 
@@ -89,6 +93,7 @@ export class BrowserViewInspector extends Disposable {
 		const onNavigated = () => {
 			this._activeSelection.clear();
 			this._activeAreaSelection.clear();
+			this._activeVisualEdit.clear();
 		};
 		webContents.on('did-navigate', onNavigated);
 		this._register({ dispose: () => webContents.removeListener('did-navigate', onNavigated) });
@@ -234,6 +239,11 @@ export class BrowserViewInspector extends Disposable {
 			this._onDidSelectElement.fire(nodeData);
 		});
 
+		inspector.onDidCommitVisualEdit(delta => {
+			this._activeVisualEdit.clear();
+			this._onDidCommitVisualEdit.fire(delta);
+		});
+
 		// When a frame's preload stops picking, stop all other frames too
 		inspector.onDidStopPicking(() => {
 			this._activeSelection.clear();
@@ -344,6 +354,43 @@ export class BrowserViewInspector extends Disposable {
 		} catch {
 			this._activeAreaSelection.clear();
 		}
+	}
+
+	async toggleVisualEdit(elementId: string, enabled?: boolean): Promise<void> {
+		const newEnabled = enabled ?? !this._activeVisualEdit.value;
+		if (!newEnabled) {
+			this._activeVisualEdit.clear();
+			return;
+		}
+
+		this._activeSelection.clear();
+		this._activeAreaSelection.clear();
+
+		const start = () => {
+			for (const inspector of this._registry.inspectors) {
+				inspector.startVisualEdit(elementId);
+			}
+		};
+		const stop = () => {
+			for (const inspector of this._registry.inspectors) {
+				try {
+					inspector.stopVisualEdit();
+				} catch {
+					// Frame may be gone.
+				}
+			}
+		};
+
+		const visualEdit: IActiveSelection = {
+			dispose: () => {
+				if (this._activeVisualEdit.value === visualEdit) {
+					this._activeVisualEdit.clearAndLeak();
+					stop();
+				}
+			}
+		};
+		this._activeVisualEdit.value = visualEdit;
+		start();
 	}
 
 	/**

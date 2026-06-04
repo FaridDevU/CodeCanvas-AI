@@ -183,6 +183,10 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 		return this._getBrowserView(id).inspector.onDidSelectElement;
 	}
 
+	onDynamicDidCommitVisualEdit(id: string) {
+		return this._getBrowserView(id).inspector.onDidCommitVisualEdit;
+	}
+
 	onDynamicDidChangeElementSelectionActive(id: string) {
 		return this._getBrowserView(id).inspector.onDidChangeElementSelectionActive;
 	}
@@ -312,6 +316,10 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 
 	async toggleElementSelection(id: string, enabled?: boolean): Promise<void> {
 		return this._getBrowserView(id).inspector.toggleElementSelection(enabled);
+	}
+
+	async toggleVisualEdit(id: string, elementId: string, enabled?: boolean): Promise<void> {
+		return this._getBrowserView(id).inspector.toggleVisualEdit(elementId, enabled);
 	}
 
 	async toggleAreaSelection(id: string, enabled?: boolean): Promise<void> {
