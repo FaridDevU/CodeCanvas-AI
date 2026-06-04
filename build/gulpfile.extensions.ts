@@ -97,7 +97,7 @@ const compilations = [
 	'.vscode/extensions/vscode-pr-pinger/tsconfig.json',
 ];
 
-const getBaseUrl = (out: string) => `https://main.vscode-cdn.net/sourcemaps/${commit}/${out}`;
+const getBaseUrl = (out: string) => `https://cdn.codecanvas.ai/sourcemaps/${commit}/${out}`;
 
 function rewriteTsgoSourceMappingUrlsIfNeeded(build: boolean, out: string, baseUrl: string): Promise<void> {
 	if (!build) {

@@ -519,11 +519,11 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 			await rcedit(fullPath, {
 				'file-version': baseVersion,
 				'version-string': {
-					'CompanyName': 'Microsoft Corporation',
-					'FileDescription': productContents.nameLong,
-					'FileVersion': packageJsonContents.version,
-					'InternalName': basename,
-					'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
+'CompanyName': 'CodeCanvas AI',
+				'FileDescription': productContents.nameLong,
+				'FileVersion': packageJsonContents.version,
+				'InternalName': basename,
+				'LegalCopyright': 'Copyright (C) 2026 CodeCanvas AI. All rights reserved',
 					'OriginalFilename': basename,
 					'ProductName': productContents.nameLong,
 					'ProductVersion': packageJsonContents.version,
@@ -576,7 +576,7 @@ function tweakProductForServerWeb(product: typeof import('../product.json')) {
 	const minifyTask = task.define(`minify-vscode-${type}`, task.series(
 		bundleTask,
 		util.rimraf(`out-vscode-${type}-min`),
-		optimize.minifyTask(`out-vscode-${type}`, `https://main.vscode-cdn.net/sourcemaps/${commit}/core`)
+		optimize.minifyTask(`out-vscode-${type}`, `https://cdn.codecanvas.ai/sourcemaps/${commit}/core`)
 	));
 	task.task(minifyTask);
 
