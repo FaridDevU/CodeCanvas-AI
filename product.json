@@ -1,6 +1,7 @@
 {
 	"nameShort": "CodeCanvas AI",
 	"nameLong": "CodeCanvas AI",
+	"enableTelemetry": false,
 	"applicationName": "codecanvas",
 	"dataFolderName": ".codecanvas",
 	"sharedDataFolderName": ".codecanvas-shared",
