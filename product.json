@@ -35,7 +35,6 @@
 	"nodejsRepository": "https://nodejs.org",
 	"urlProtocol": "codecanvas",
 	"agentsTelemetryAppName": "agents",
-	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.codecanvas.ai/insider/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
 		{
 			"name": "ms-vscode.js-debug-companion",
