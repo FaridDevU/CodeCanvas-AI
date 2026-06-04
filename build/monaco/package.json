@@ -3,15 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "description": "A browser based code editor",
-  "author": "Microsoft Corporation",
+  "author": "CodeCanvas AI",
   "license": "MIT",
   "typings": "./esm/vs/editor/editor.api.d.ts",
   "module": "./esm/vs/editor/editor.main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/microsoft/vscode"
+    "url": "https://github.com/FaridDevU/CodeCanvas-AI"
   },
   "bugs": {
-    "url": "https://github.com/microsoft/vscode/issues"
+    "url": "https://github.com/FaridDevU/CodeCanvas-AI/issues"
   }
 }
