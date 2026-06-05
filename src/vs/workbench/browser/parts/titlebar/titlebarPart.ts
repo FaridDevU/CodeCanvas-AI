@@ -9,6 +9,8 @@ import { MultiWindowParts, Part } from '../../part.js';
 import { ITitleService } from '../../../services/title/browser/titleService.js';
 import { getWCOTitlebarAreaRect, getZoomFactor, isWCOEnabled } from '../../../../base/browser/browser.js';
 import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTitlebar, hasNativeTitlebar, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, getWindowControlsStyle, WindowControlsStyle, TitlebarStyle, MenuSettings, hasNativeMenu } from '../../../../platform/window/common/window.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
 import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
@@ -475,6 +477,12 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
 		}
 
+		// CodeCanvas AI: brand (wordmark + project pill + branch) on the left of the main
+		// window title bar. Rendered here so it survives title bar re-creation.
+		if (!this.isAuxiliary) {
+			this.createCodeCanvasBrand();
+		}
+
 		// Draggable region that we can manipulate for #52522
 		this.dragRegion = prepend(this.rootContainer, $('div.titlebar-drag-region'));
 
@@ -583,6 +591,44 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.updateStyles();
 
 		return this.element;
+	}
+
+	// CodeCanvas AI: builds the left-side brand (wordmark + project pill + branch).
+	private createCodeCanvasBrand(): void {
+		const brand = append(this.leftContent, $('div.cc-titlebar-brand'));
+
+		const logo = append(brand, $('span.cc-titlebar-logo'));
+		logo.textContent = 'CodeCanvas AI';
+
+		const projectName = this.instantiationService.invokeFunction(accessor => {
+			const folders = accessor.get(IWorkspaceContextService).getWorkspace().folders;
+			return folders[0]?.name;
+		}) ?? localize('cc.noProject', "No Project");
+
+		const projectBtn = append(brand, $('button.cc-titlebar-project'));
+		projectBtn.title = projectName;
+		const projectLabel = append(projectBtn, $('span.cc-titlebar-project-name'));
+		projectLabel.textContent = projectName;
+		append(projectBtn, $('span.codicon.codicon-chevron-down.cc-titlebar-chevron'));
+
+		// Project switcher dropdown: open folder / recent / close.
+		this._register(addDisposableListener(projectBtn, EventType.CLICK, () => {
+			this.instantiationService.invokeFunction(accessor => {
+				const commandService = accessor.get(ICommandService);
+				this.contextMenuService.showContextMenu({
+					getAnchor: () => projectBtn,
+					getActions: () => [
+						{ id: 'cc.openFolder', label: localize('cc.openFolder', "Open Folder..."), tooltip: '', class: undefined, enabled: true, run: () => commandService.executeCommand('workbench.action.files.openFolder') },
+						{ id: 'cc.openRecent', label: localize('cc.openRecent', "Open Recent..."), tooltip: '', class: undefined, enabled: true, run: () => commandService.executeCommand('workbench.action.openRecent') },
+						{ id: 'cc.closeFolder', label: localize('cc.closeFolder', "Close Folder"), tooltip: '', class: undefined, enabled: true, run: () => commandService.executeCommand('workbench.action.closeFolder') },
+					],
+				});
+			});
+		}));
+
+		const branch = append(brand, $('span.cc-titlebar-branch'));
+		append(branch, $('span.codicon.codicon-git-branch'));
+		append(branch, $('span.cc-titlebar-branch-name')).textContent = 'main';
 	}
 
 	private createTitle(): void {

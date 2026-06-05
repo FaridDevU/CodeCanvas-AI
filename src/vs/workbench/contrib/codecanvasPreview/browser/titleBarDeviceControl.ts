@@ -17,7 +17,7 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { localize } from '../../../../nls.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
-import { IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+import { IContextKeyService, RawContextKey, ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
@@ -30,12 +30,16 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
+import { IBrowserDeviceProfile } from '../../../../platform/browserView/common/browserView.js';
 
 export const DEVICE_CONTROL_ACTION_ID = 'codecanvas.titlebar.deviceControl';
 const HISTORY_ACTION_ID = 'codecanvas.titlebar.history';
 const SHARE_ACTION_ID = 'codecanvas.titlebar.share';
+const VERPREVIEW_ACTION_ID = 'codecanvas.titlebar.verPreview';
 const STORAGE_KEY = 'codecanvas.previewViewport';
 const DEVICE_CONTROL_CONTEXT = new RawContextKey<boolean>('codecanvasDeviceControl', false);
+const PREVIEW_ID = 'codecanvas.preview';
 
 // Strip vanilla VS Code title bar chrome that is not part of the CodeCanvas design.
 // These are default overrides only (no behavior is removed): the Copilot sign-in
@@ -88,6 +92,23 @@ registerAction2(class DeviceControlAction extends Action2 {
 	override async run(_accessor: ServicesAccessor): Promise<void> { }
 });
 
+// Prominent "Ver Preview" button in the title bar, shown only for web projects.
+registerAction2(class VerPreviewAction extends Action2 {
+	constructor() {
+		super({
+			id: VERPREVIEW_ACTION_ID,
+			title: localize('cc.verPreview', "Ver Preview"),
+			icon: Codicon.eye,
+			category: Categories.View,
+			f1: false,
+			menu: [{ id: MenuId.TitleBar, group: 'navigation', order: 0, when: ContextKeyExpr.has('codecanvasIsWebProject') }]
+		});
+	}
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		await accessor.get(ICommandService).executeCommand('codecanvas.preview.open');
+	}
+});
+
 // History: reveals the Timeline. Share: copies the workspace path to the clipboard.
 registerAction2(class HistoryAction extends Action2 {
 	constructor() {
@@ -133,6 +154,7 @@ class LabeledTitleBarItem extends BaseActionViewItem {
 		private readonly icon: ThemeIcon,
 		private readonly text: string,
 		private readonly withChevron: boolean,
+		private readonly accent = false,
 	) {
 		super(undefined, action, options);
 	}
@@ -141,6 +163,9 @@ class LabeledTitleBarItem extends BaseActionViewItem {
 		super.render(container);
 		container.classList.add('cc-titlebar-pill-item');
 		const pill = dom.append(container, dom.$('button.cc-titlebar-pill'));
+		if (this.accent) {
+			pill.classList.add('cc-titlebar-pill-accent');
+		}
 		pill.title = this.text;
 		dom.append(pill, dom.$(ThemeIcon.asCSSSelector(this.icon)));
 		const label = dom.append(pill, dom.$('span.cc-titlebar-pill-label'));
@@ -161,6 +186,7 @@ class DeviceControlViewItem extends BaseActionViewItem {
 		options: IBaseActionViewItemOptions,
 		@IStorageService private readonly storageService: IStorageService,
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@IBrowserViewWorkbenchService private readonly browserViewWorkbenchService: IBrowserViewWorkbenchService,
 	) {
 		super(undefined, action, options);
 	}
@@ -186,8 +212,9 @@ class DeviceControlViewItem extends BaseActionViewItem {
 		this.viewportLabel = dom.prepend(viewport, dom.$('span.cc-device-viewport-label'));
 		this._register(dom.addDisposableListener(viewport, dom.EventType.CLICK, () => this.showViewportMenu(viewport)));
 
-		const stored = this.storageService.get(STORAGE_KEY, StorageScope.PROFILE);
-		this.applySelection(presetForKind(stored));
+		// Always start on Desktop (no emulation) so the preview renders crisp; the user can
+		// switch to tablet/mobile, which emulate (and scale) on purpose.
+		this.applySelection(DEVICE_PRESETS[0]);
 	}
 
 	private select(preset: IDevicePreset): void {
@@ -219,6 +246,20 @@ class DeviceControlViewItem extends BaseActionViewItem {
 		if (this.viewportLabel) {
 			this.viewportLabel.textContent = `${preset.width}px`;
 		}
+		const input = this.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+		if (input) {
+			// Desktop = no emulation (full width); tablet/mobile = emulated device width.
+			const device: IBrowserDeviceProfile | undefined = preset.kind === 'desktop'
+				? undefined
+				: { width: preset.width, mobile: true };
+			if (input.model) {
+				void input.model.setDevice(device);
+			} else {
+				input.onceModelResolves(model => {
+					void model.setDevice(device);
+				});
+			}
+		}
 	}
 }
 
@@ -229,13 +270,17 @@ export class CodeCanvasTitleBarContribution extends Disposable implements IWorkb
 		@IActionViewItemService actionViewItemService: IActionViewItemService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
-		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 	) {
 		super();
 		this._register(actionViewItemService.register(
 			MenuId.TitleBarAdjacentCenter,
 			DEVICE_CONTROL_ACTION_ID,
 			(action, options) => instantiationService.createInstance(DeviceControlViewItem, action, options)
+		));
+		this._register(actionViewItemService.register(
+			MenuId.TitleBar,
+			VERPREVIEW_ACTION_ID,
+			(action, options) => new LabeledTitleBarItem(action, options, Codicon.eye, localize('cc.verPreview', "Ver Preview"), false, true)
 		));
 		this._register(actionViewItemService.register(
 			MenuId.TitleBar,
@@ -250,43 +295,7 @@ export class CodeCanvasTitleBarContribution extends Disposable implements IWorkb
 		// Reveal the menu items only after the view-item providers are registered so the
 		// toolbar renders our custom controls instead of generic buttons.
 		DEVICE_CONTROL_CONTEXT.bindTo(contextKeyService).set(true);
-
-		// Inject CodeCanvas brand into title bar left after layout settles.
-		setTimeout(() => this.injectBrandIntoTitlebar(), 0);
-	}
-
-	private injectBrandIntoTitlebar(): void {
-		const container = document.querySelector('.monaco-workbench .part.titlebar > .titlebar-container');
-		if (!container) { return; }
-
-		const left = container.querySelector('.titlebar-left') as HTMLElement;
-		if (!left || left.querySelector('.cc-titlebar-brand')) { return; }
-
-		const brand = dom.$('div.cc-titlebar-brand');
-
-		// Logo
-		const logo = dom.$('span.cc-titlebar-logo');
-		logo.textContent = 'CodeCanvas AI';
-		brand.appendChild(logo);
-
-		// Project name dropdown
-		const folders = this.workspaceContextService.getWorkspace().folders;
-		const projectName = folders[0]?.name ?? localize('cc.noProject', "No Project");
-		const projectBtn = dom.$('button.cc-titlebar-project');
-		projectBtn.title = projectName;
-		projectBtn.innerHTML = `<span class="cc-titlebar-project-name">${projectName.replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]!))}</span><span class="codicon codicon-chevron-down cc-titlebar-chevron"></span>`;
-		brand.appendChild(projectBtn);
-
-		// Branch indicator
-		const branch = dom.$('span.cc-titlebar-branch');
-		branch.innerHTML = `<span class="codicon codicon-git-branch"></span><span class="cc-titlebar-branch-name">main</span>`;
-		brand.appendChild(branch);
-
-		// Insert after first child (hamburger menu) if present, else prepend
-		if (left.firstElementChild) {
-			left.insertBefore(brand, left.firstElementChild.nextSibling);
-		} else {
-			left.prepend(brand);
-		}
+		// The CodeCanvas brand (logo + project + branch) is rendered by the title bar part
+		// itself (see titlebarPart.createContentArea) so it survives title bar re-creation.
 	}
 }
