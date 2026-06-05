@@ -51,6 +51,7 @@ export class BrowserViewEmulator extends Disposable {
 	}
 
 	async setDevice(device: IBrowserDeviceProfile | undefined): Promise<void> {
+		console.log('[BrowserViewEmulator] setDevice', device);
 		const prev = this._device;
 		this._device = device;
 
@@ -87,6 +88,7 @@ export class BrowserViewEmulator extends Disposable {
 	}
 
 	private _reapply(): void {
+		console.log('[BrowserViewEmulator] _reapply', this._device, 'safe=', this.isSafeToApplyEmulation());
 		if (!this._device || !this.isSafeToApplyEmulation()) {
 			return;
 		}

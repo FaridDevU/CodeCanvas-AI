@@ -6,28 +6,27 @@
 import './media/shinyText.css';
 import { URI } from '../../../../base/common/uri.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
-import { $, append } from '../../../../base/browser/dom.js';
-import { createShinyText } from './shinyText.js';
 import { CodeCanvasTitleBarContribution } from './titleBarDeviceControl.js';
 import { CodeCanvasStatusBarContribution } from './codecanvasStatusBar.js';
-import { observableValue, ISettableObservable, runOnChange } from '../../../../base/common/observable.js';
+import { observableValue, ISettableObservable } from '../../../../base/common/observable.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { FileChangeType, IFileService } from '../../../../platform/files/common/files.js';
-import { ServicesAccessor, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
-import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { RawContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
-import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation, IViewDescriptorService } from '../../../common/views.js';
+import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
-import { ViewPane, IViewPaneOptions } from '../../../browser/parts/views/viewPane.js';
 import { ITerminalService } from '../../terminal/browser/terminal.js';
 import { IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
 import { VSBuffer } from '../../../../base/common/buffer.js';
@@ -35,27 +34,73 @@ import { IElementData } from '../../../../platform/browserView/common/browserVie
 import { Codicon } from '../../../../base/common/codicons.js';
 import { generateDiff, createBackup, IDomDelta } from '../common/EdicionVisual/diffEngine.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
-import { CodeCanvasAiPanelView } from './aiPanelView.js';
 import { CodeCanvasSnapshotsView } from './snapshotsView.js';
-import { IThemeService } from '../../../../platform/theme/common/themeService.js';
-import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
-import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
-import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
-import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
-import { IOpenerService } from '../../../../platform/opener/common/opener.js';
-import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 
 const PREVIEW_ID = 'codecanvas.preview';
-const PREVIEW_VIEW_ID = 'codecanvasPreview';
-const INSPECTOR_VIEW_ID = 'codecanvas.inspector';
 const STATUS_ID = 'status.codecanvasPreview';
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
-const codecanvasInspectorIcon = registerIcon('codecanvas-inspector-icon', Codicon.inspect, localize('codecanvasInspectorIcon', 'View icon of the CodeCanvas Inspector.'));
-const aiBuilderIcon = registerIcon('codecanvas-ai-builder-icon', Codicon.lightbulb, localize('aiBuilderIcon', 'View icon of the AI Builder.'));
-const assetsIcon = registerIcon('codecanvas-assets-icon', Codicon.fileMedia, localize('assetsIcon', 'View icon of the Assets.'));
 
 const currentElementData: ISettableObservable<IElementData | null> = observableValue('codecanvas.currentElement', null);
+
+export const codecanvasIsWebProject = new RawContextKey<boolean>('codecanvasIsWebProject', false);
+export const webProjectUrl: ISettableObservable<string | undefined> = observableValue('codecanvas.webProjectUrl', undefined);
+
+async function detectWebProject(root: URI, fileService: IFileService): Promise<{ isWeb: boolean; url?: string }> {
+	// Dev-server project (Vite/Next/etc.).
+	const packageJson = URI.joinPath(root, 'package.json');
+	if (await fileService.exists(packageJson)) {
+		const { hasScript, devScriptValue } = await hasNpmDevScript(fileService, packageJson);
+		if (hasScript) {
+			const configPort = await detectConfigPort(fileService, root);
+			const guessedUrls = getDefaultUrlsFromPackageScripts(devScriptValue);
+			const url = configPort ? `http://localhost:${configPort}` : (await tryConnectToUrls(guessedUrls) ?? guessedUrls[0]);
+			return { isWeb: true, url };
+		}
+	}
+
+	// Static site: any .html anywhere counts (matches what the preview can open).
+	const pages = await listPreviewablePages(root, fileService);
+	if (pages.length > 0) {
+		return { isWeb: true, url: pages[0].toString() };
+	}
+
+	return { isWeb: false };
+}
+
+const PAGE_IGNORE_DIRS = new Set(['node_modules', 'out', 'dist', 'build', '.git', '.next', '.cache']);
+
+// Collect every previewable .html page in the workspace (root index.html first), skipping
+// build output and backup files.
+async function listPreviewablePages(root: URI, fileService: IFileService): Promise<URI[]> {
+	const pages: URI[] = [];
+	const queue: URI[] = [root];
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		let stat;
+		try {
+			stat = await fileService.resolve(current);
+		} catch {
+			continue;
+		}
+		for (const child of stat.children ?? []) {
+			if (child.isDirectory) {
+				if (!PAGE_IGNORE_DIRS.has(child.name)) {
+					queue.push(child.resource);
+				}
+			} else if (child.name.endsWith('.html') && !/_backup/i.test(child.name)) {
+				pages.push(child.resource);
+			}
+		}
+	}
+	// Root-level index.html first, then the rest alphabetically by path.
+	pages.sort((a, b) => {
+		const aRoot = a.path === URI.joinPath(root, 'index.html').path ? 0 : 1;
+		const bRoot = b.path === URI.joinPath(root, 'index.html').path ? 0 : 1;
+		return aRoot - bRoot || a.path.localeCompare(b.path);
+	});
+	return pages;
+}
 
 interface ICodeCanvasPreviewServices {
 	readonly browserViewWorkbenchService: IBrowserViewWorkbenchService;
@@ -65,6 +110,7 @@ interface ICodeCanvasPreviewServices {
 	readonly notificationService: INotificationService;
 	readonly quickInputService: IQuickInputService;
 	readonly terminalService: ITerminalService;
+	readonly storageService: IStorageService;
 }
 
 function getPreviewServices(accessor: ServicesAccessor): ICodeCanvasPreviewServices {
@@ -75,7 +121,8 @@ function getPreviewServices(accessor: ServicesAccessor): ICodeCanvasPreviewServi
 		fileService: accessor.get(IFileService),
 		notificationService: accessor.get(INotificationService),
 		quickInputService: accessor.get(IQuickInputService),
-		terminalService: accessor.get(ITerminalService)
+		terminalService: accessor.get(ITerminalService),
+		storageService: accessor.get(IStorageService)
 	};
 }
 
@@ -177,7 +224,9 @@ async function detectConfigPort(
 async function openBrowserPreview(services: ICodeCanvasPreviewServices, url: string, title = localize('preview.title', "CodeCanvas Preview")): Promise<void> {
 	const input = services.browserViewWorkbenchService.getOrCreateLazy(PREVIEW_ID, { url, title });
 	input.navigate(url);
-	await services.editorService.openEditor(input, { pinned: true });
+	// Open in a dedicated side column so the preview lives next to the code, not as a tab
+	// in the code group. There is a single preview input, so it is reused in that column.
+	await services.editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
 }
 
 async function tryConnectToUrls(urls: string[]): Promise<string | null> {
@@ -223,7 +272,35 @@ async function openLocalhostPreview(services: ICodeCanvasPreviewServices): Promi
 	await openBrowserPreview(services, normalizePreviewUrl(value), localize('localhostPreview.editorTitle', "CodeCanvas Localhost Preview"));
 }
 
-async function openWorkspacePreview(services: ICodeCanvasPreviewServices): Promise<void> {
+const PREVIEW_PAGE_KEY = 'codecanvas.preview.lastPage';
+
+// Resolve which HTML page to preview: 1 page → that one; remembered choice → reuse it;
+// otherwise ask. forceChoose skips the remembered value.
+async function pickPreviewPage(services: ICodeCanvasPreviewServices, root: URI, pages: URI[], _forceChoose: boolean): Promise<URI | undefined> {
+	if (pages.length === 1) {
+		return pages[0];
+	}
+	const rel = (u: URI) => u.path.slice(root.path.length).replace(/^\/+/, '');
+	type PageItem = IQuickPickItem & { uri: URI };
+	const items: PageItem[] = pages.map(p => ({ label: rel(p), uri: p }));
+
+	// Pre-select the last previewed page, but always let the user choose again.
+	const last = services.storageService.get(PREVIEW_PAGE_KEY, StorageScope.WORKSPACE);
+	const activeItem = last ? items.find(i => i.uri.toString() === last) : undefined;
+
+	const picked = await services.quickInputService.pick<PageItem>(items, {
+		title: localize('preview.pickPage.title', "Choose a page to preview"),
+		placeHolder: localize('preview.pickPage.placeholder', "Select which HTML page to open"),
+		activeItem
+	});
+	if (!picked) {
+		return undefined;
+	}
+	services.storageService.store(PREVIEW_PAGE_KEY, picked.uri.toString(), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+	return picked.uri;
+}
+
+async function openWorkspacePreview(services: ICodeCanvasPreviewServices, forceChoosePage = false): Promise<void> {
 	const root = getWorkspaceRoot(services.contextService);
 
 	if (!root) {
@@ -231,17 +308,29 @@ async function openWorkspacePreview(services: ICodeCanvasPreviewServices): Promi
 		return;
 	}
 
-	const indexHtml = URI.joinPath(root, 'index.html');
-	if (await services.fileService.exists(indexHtml)) {
-		await openBrowserPreview(services, indexHtml.toString(), localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
+	const packageJson = URI.joinPath(root, 'package.json');
+	const pkgExists = await services.fileService.exists(packageJson);
+	const { hasScript, devScriptValue } = pkgExists
+		? await hasNpmDevScript(services.fileService, packageJson)
+		: { hasScript: false, devScriptValue: '' };
+
+	// Static site (no dev script): let the user pick which .html page to preview.
+	if (!hasScript) {
+		const pages = await listPreviewablePages(root, services.fileService);
+		if (pages.length > 0) {
+			const page = await pickPreviewPage(services, root, pages, forceChoosePage);
+			if (page) {
+				await openBrowserPreview(services, page.toString(), localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
+			}
+			return;
+		}
+		await openLocalhostPreview(services);
 		return;
 	}
 
-	const packageJson = URI.joinPath(root, 'package.json');
-	if (await services.fileService.exists(packageJson)) {
-
+	// Project has a dev script: offer to start the dev server or use a running one.
+	{
 		const picks: IQuickPickItem[] = [];
-		const { hasScript, devScriptValue } = await hasNpmDevScript(services.fileService, packageJson);
 
 		if (hasScript) {
 			const configPort = await detectConfigPort(services.fileService, root);
@@ -333,189 +422,6 @@ async function openWorkspacePreview(services: ICodeCanvasPreviewServices): Promi
 	}
 
 	await openLocalhostPreview(services);
-}
-
-// Inspector ViewPane
-class CodeCanvasInspectorView extends ViewPane {
-	static readonly ID = INSPECTOR_VIEW_ID;
-	static readonly NAME = localize2('inspectorView', "Element Inspector");
-
-	private contentEl!: HTMLElement;
-
-	constructor(
-		options: IViewPaneOptions,
-		@IThemeService themeService: IThemeService,
-		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
-		@IInstantiationService anotherInstantiationService: IInstantiationService,
-		@IKeybindingService keybindingService: IKeybindingService,
-		@IContextMenuService contextMenuService: IContextMenuService,
-		@IConfigurationService configurationService: IConfigurationService,
-		@IContextKeyService contextKeyService: IContextKeyService,
-		@IOpenerService openerService: IOpenerService,
-		@IHoverService hoverService: IHoverService,
-	) {
-		super(options, keybindingService, contextMenuService, configurationService, contextKeyService,
-			viewDescriptorService, anotherInstantiationService, openerService, themeService, hoverService);
-	}
-
-	protected override renderBody(container: HTMLElement): void {
-		super.renderBody(container);
-		container.style.padding = '8px';
-		container.style.fontFamily = 'var(--monaco-monospace-font, monospace)';
-		container.style.fontSize = '12px';
-		container.style.overflowY = 'auto';
-
-		this.contentEl = append(container, $('div'));
-		this.renderEmpty();
-
-		this._register(runOnChange(currentElementData, (data) => {
-			if (data) {
-				this.renderElement(data);
-			} else {
-				this.renderEmpty();
-			}
-		}));
-	}
-
-	private renderEmpty(): void {
-		this.contentEl.innerHTML = '';
-		const empty = append(this.contentEl, $('div'));
-		empty.style.textAlign = 'center';
-		empty.style.padding = '20px';
-
-		const wordmark = createShinyText('CodeCanvas AI', { speed: 3, spread: 120 });
-		wordmark.style.display = 'block';
-		wordmark.style.fontSize = '15px';
-		wordmark.style.fontWeight = '600';
-		wordmark.style.marginBottom = '10px';
-		append(empty, wordmark);
-
-		const hint = append(empty, $('div'));
-		hint.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
-		hint.textContent = localize('inspector.empty', "Click an element in the preview to inspect it.\nRun CodeCanvas: Inspect Element to start.");
-	}
-
-	private renderElement(data: IElementData): void {
-		this.contentEl.innerHTML = '';
-
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(data.outerHTML, 'text/html');
-		const el = doc.body.firstElementChild;
-		const tagName = el?.tagName?.toLowerCase() ?? 'element';
-		const id = data.attributes?.id ?? '';
-		const classes = data.attributes?.class ?? '';
-		const selector = `${tagName}${id ? '#' + id : ''}${classes ? '.' + classes.replace(/\s+/g, '.') : ''}`;
-		const bounds = data.bounds;
-		const dims = data.dimensions;
-
-		const section = (title: string): HTMLElement => {
-			const sec = $('div', undefined);
-			sec.style.marginBottom = '12px';
-
-			const h = $('div', undefined);
-			h.style.fontWeight = 'bold';
-			h.style.marginBottom = '4px';
-			h.style.color = 'var(--vscode-textLink-foreground, #228df2)';
-			h.textContent = title;
-			h.style.fontSize = '11px';
-			h.style.textTransform = 'uppercase';
-			h.style.letterSpacing = '0.5px';
-			sec.appendChild(h);
-
-			const body = $('div', undefined);
-			sec.appendChild(body);
-			return sec;
-		};
-
-		const row = (label: string, value: string, isMono = true): HTMLElement => {
-			const r = $('div', undefined);
-			r.style.display = 'flex';
-			r.style.marginBottom = '2px';
-
-			const lbl = $('span', undefined);
-			lbl.textContent = label + ': ';
-			lbl.style.color = 'var(--vscode-descriptionForeground, #7d7d87)';
-			lbl.style.flexShrink = '0';
-			r.appendChild(lbl);
-
-			const val = $('span', undefined);
-			val.textContent = value;
-			val.style.wordBreak = 'break-all';
-			if (isMono) {
-				val.style.color = 'var(--vscode-textPreformat-foreground, #ccc)';
-			}
-			r.appendChild(val);
-
-			return r;
-		};
-
-		// Tag section
-		const tagSection = section(localize('inspector.section.element', "Element"));
-		append(tagSection.children[1] as HTMLElement, row(localize('inspector.tag', "Tag"), tagName.toUpperCase()));
-		append(tagSection.children[1] as HTMLElement, row(localize('inspector.selector', "Selector"), selector || tagName));
-		this.contentEl.appendChild(tagSection);
-
-		// Dimensions section
-		const dimsSection = section(localize('inspector.section.dimensions', "Dimensions"));
-		const w = bounds?.width ?? dims?.width ?? 0;
-		const h = bounds?.height ?? dims?.height ?? 0;
-		append(dimsSection.children[1] as HTMLElement, row(localize('inspector.size', "Size"), `${w} x ${h}`));
-		if (dimensionsData(data)) {
-			const d = dimensionsData(data)!;
-			append(dimsSection.children[1] as HTMLElement, row(localize('inspector.position', "Position"), `left:${d.left}, top:${d.top}`));
-		}
-		this.contentEl.appendChild(dimsSection);
-
-		// Attributes section
-		if (data.attributes) {
-			const filtered = Object.entries(data.attributes).filter(([k]) => k !== 'class' && k !== 'id' && k !== 'style');
-			if (filtered.length > 0) {
-				const attrsSection = section(localize('inspector.section.attributes', "Attributes"));
-				const attrsBody = attrsSection.children[1] as HTMLElement;
-				for (const [key, value] of filtered) {
-					append(attrsBody, row(key, value));
-				}
-				this.contentEl.appendChild(attrsSection);
-			}
-		}
-
-		// Computed styles section
-		if (data.computedStyles) {
-			const important = ['display', 'position', 'color', 'background-color', 'font-size', 'font-family',
-				'margin', 'padding', 'border', 'width', 'height', 'top', 'left', 'right', 'bottom',
-				'flex', 'grid', 'z-index', 'overflow'];
-			const relevant = Object.entries(data.computedStyles)
-				.filter(([k]) => important.includes(k) || important.some(p => k.startsWith(p)))
-				.slice(0, 20);
-
-			if (relevant.length > 0) {
-				const styleSection = section(localize('inspector.section.styles', "Computed Styles"));
-				const styleBody = styleSection.children[1] as HTMLElement;
-				for (const [key, val] of relevant) {
-					append(styleBody, row(key, val));
-				}
-				this.contentEl.appendChild(styleSection);
-			}
-		}
-
-		// DOM path section
-		if (data.ancestors && data.ancestors.length > 0) {
-			const pathSection = section(localize('inspector.section.path', "DOM Path"));
-			const ancestorPath = data.ancestors.slice().reverse().map(a => a.tagName.toLowerCase()).join(' > ') + ' > ' + tagName;
-			const pathVal = $('span', undefined);
-			pathVal.textContent = ancestorPath;
-			pathVal.style.color = 'var(--vscode-textPreformat-foreground, #ccc)';
-			pathVal.style.fontSize = '11px';
-			append(pathSection.children[1] as HTMLElement, pathVal);
-			this.contentEl.appendChild(pathSection);
-		}
-	}
-}
-
-function dimensionsData(data: IElementData): { left: number; top: number; width: number; height: number } | undefined {
-	if (data.dimensions) { return data.dimensions; }
-	if (data.bounds) { return { left: data.bounds.x, top: data.bounds.y, width: data.bounds.width, height: data.bounds.height }; }
-	return undefined;
 }
 
 // Preview status bar contribution
@@ -657,88 +563,16 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 	}
 }
 
-// View container + views registration
-const viewContainer = Registry.as<IViewContainersRegistry>(
-	ViewContainerExtensions.ViewContainersRegistry
-).registerViewContainer({
-	id: PREVIEW_VIEW_ID,
-	title: localize2('codecanvasPreview', "CodeCanvas Preview"),
-	icon: codecanvasPreviewIcon,
-	order: 5,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [PREVIEW_VIEW_ID, { mergeViewWithContainerWhenSingleView: true }]),
-	storageId: PREVIEW_VIEW_ID,
-	hideIfEmpty: false,
-}, ViewContainerLocation.Sidebar);
-
-Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
-	id: CodeCanvasInspectorView.ID,
-	name: CodeCanvasInspectorView.NAME,
-	ctorDescriptor: new SyncDescriptor(CodeCanvasInspectorView),
-	containerIcon: codecanvasInspectorIcon,
-	canToggleVisibility: true,
-	canMoveView: true,
-	order: 1,
-}], viewContainer);
-
-// AI Builder view container (Sidebar)
-Registry.as<IViewContainersRegistry>(
-	ViewContainerExtensions.ViewContainersRegistry
-).registerViewContainer({
-	id: 'codecanvas.aiBuilder',
-	title: localize2('aiBuilder', "AI Builder"),
-	icon: aiBuilderIcon,
-	order: 6,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.aiBuilder', { mergeViewWithContainerWhenSingleView: true }]),
-	storageId: 'codecanvas.aiBuilder',
-	hideIfEmpty: false,
-}, ViewContainerLocation.Sidebar);
-
-// Assets view container (Sidebar)
-Registry.as<IViewContainersRegistry>(
-	ViewContainerExtensions.ViewContainersRegistry
-).registerViewContainer({
-	id: 'codecanvas.assets',
-	title: localize2('assets', "Assets"),
-	icon: assetsIcon,
-	order: 7,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.assets', { mergeViewWithContainerWhenSingleView: true }]),
-	storageId: 'codecanvas.assets',
-	hideIfEmpty: false,
-}, ViewContainerLocation.Sidebar);
-
-// AI Panel view container (right side / AuxiliaryBar)
-const aiPanelContainer = Registry.as<IViewContainersRegistry>(
-	ViewContainerExtensions.ViewContainersRegistry
-).registerViewContainer({
-	id: 'codecanvas.aiPanel',
-	title: localize2('aiPanel', "CodeCanvas AI"),
-	icon: codecanvasPreviewIcon,
-	order: 1,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.aiPanel', { mergeViewWithContainerWhenSingleView: true }]),
-	storageId: 'codecanvas.aiPanel',
-	hideIfEmpty: false,
-}, ViewContainerLocation.AuxiliaryBar);
-
-Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
-	id: CodeCanvasAiPanelView.ID,
-	name: CodeCanvasAiPanelView.NAME,
-	ctorDescriptor: new SyncDescriptor(CodeCanvasAiPanelView),
-	containerIcon: codecanvasPreviewIcon,
-	canToggleVisibility: true,
-	canMoveView: true,
-	order: 1,
-}], aiPanelContainer);
-
 // Snapshots view container (Panel / bottom)
 const snapshotsContainer = Registry.as<IViewContainersRegistry>(
 	ViewContainerExtensions.ViewContainersRegistry
 ).registerViewContainer({
-	id: 'codecanvas.snapshots',
+	id: 'codecanvas.snapshotsContainer',
 	title: localize2('snapshots', "Snapshots"),
 	icon: codecanvasPreviewIcon,
 	order: 10,
-	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.snapshots', { mergeViewWithContainerWhenSingleView: true }]),
-	storageId: 'codecanvas.snapshots',
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, ['codecanvas.snapshotsContainer', { mergeViewWithContainerWhenSingleView: true }]),
+	storageId: 'codecanvas.snapshotsContainer',
 	hideIfEmpty: false,
 }, ViewContainerLocation.Panel);
 
@@ -759,15 +593,34 @@ registerAction2(class OpenCodeCanvasPreviewAction extends Action2 {
 			id: 'codecanvas.preview.open',
 			title: localize2('openPreview', "CodeCanvas: Open Preview"),
 			category: Categories.View,
+			icon: Codicon.eye,
 			f1: true,
-			menu: {
-				id: MenuId.CommandPalette
-			}
+			menu: [
+				{ id: MenuId.CommandPalette },
+				// Visible button at the top-right of the editor when the project is web.
+				{ id: MenuId.EditorTitle, group: 'navigation', order: -100, when: codecanvasIsWebProject }
+			]
 		});
 	}
 
 	override async run(accessor: ServicesAccessor): Promise<void> {
 		await openWorkspacePreview(getPreviewServices(accessor));
+	}
+});
+
+registerAction2(class ChoosePreviewPageAction extends Action2 {
+	constructor() {
+		super({
+			id: 'codecanvas.preview.choosePage',
+			title: localize2('choosePreviewPage', "CodeCanvas: Choose Preview Page"),
+			category: Categories.View,
+			f1: true,
+			menu: { id: MenuId.CommandPalette }
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		await openWorkspacePreview(getPreviewServices(accessor), true);
 	}
 });
 
@@ -1168,6 +1021,89 @@ async function acceptDelta(
 	}
 }
 
+class CodeCanvasWebProjectContribution extends DisposableStore implements IWorkbenchContribution {
+	static readonly ID = 'workbench.contrib.codecanvasWebProject';
+	private redetectTimeout: ReturnType<typeof setTimeout> | undefined;
+
+	constructor(
+		@IWorkspaceContextService contextService: IWorkspaceContextService,
+		@IFileService fileService: IFileService,
+		@IContextKeyService contextKeyService: IContextKeyService,
+	) {
+		super();
+		const ctx = codecanvasIsWebProject.bindTo(contextKeyService);
+
+		const update = async () => {
+			try {
+				const root = getWorkspaceRoot(contextService);
+				if (!root) {
+					ctx.set(false);
+					webProjectUrl.set(undefined, undefined);
+					return;
+				}
+				const result = await detectWebProject(root, fileService);
+				ctx.set(result.isWeb);
+				webProjectUrl.set(result.url, undefined);
+			} catch {
+				ctx.set(false);
+				webProjectUrl.set(undefined, undefined);
+			}
+		};
+
+		update();
+		this.add(contextService.onDidChangeWorkbenchState(() => update()));
+		this.add(contextService.onDidChangeWorkspaceFolders(() => update()));
+
+		// Re-detect when the project gains a manifest or an HTML page after being opened.
+		this.add(fileService.onDidFilesChange(e => {
+			const root = getWorkspaceRoot(contextService);
+			if (!root) { return; }
+			const manifestChanged = e.affects(URI.joinPath(root, 'package.json'));
+			const htmlChanged = e.rawAdded.concat(e.rawDeleted).some(u => u.path.endsWith('.html'));
+			if (!manifestChanged && !htmlChanged) { return; }
+			if (this.redetectTimeout) { clearTimeout(this.redetectTimeout); }
+			this.redetectTimeout = setTimeout(() => update(), 500);
+		}));
+	}
+}
+
+class CodeCanvasPreviewButtonContribution implements IWorkbenchContribution {
+	static readonly ID = 'workbench.contrib.codecanvasPreviewButton';
+	private statusEntry: IStatusbarEntryAccessor | undefined;
+
+	constructor(
+		@IStatusbarService statusbarService: IStatusbarService,
+		@IContextKeyService contextKeyService: IContextKeyService,
+	) {
+		const update = () => {
+			const isWeb = contextKeyService.getContextKeyValue<boolean>('codecanvasIsWebProject');
+			if (isWeb) {
+				if (!this.statusEntry) {
+					this.statusEntry = statusbarService.addEntry({
+						name: localize('cc.verPreview.name', "Ver Preview"),
+						text: `$(eye) ${localize('cc.verPreview', "Ver Preview")}`,
+						ariaLabel: localize('cc.verPreview', "Ver Preview"),
+						tooltip: localize('cc.verPreview.tooltip', "Abrir vista previa del proyecto"),
+						command: 'codecanvas.preview.open',
+					}, 'status.codecanvasPreviewButton', StatusbarAlignment.LEFT, 100);
+				}
+			} else {
+				this.statusEntry?.dispose();
+				this.statusEntry = undefined;
+			}
+		};
+
+		update();
+		contextKeyService.onDidChangeContext(e => {
+			if (e.affectsSome(new Set(['codecanvasIsWebProject']))) {
+				update();
+			}
+		});
+	}
+}
+
 registerWorkbenchContribution2(CodeCanvasPreviewStatusContribution.ID, CodeCanvasPreviewStatusContribution, WorkbenchPhase.BlockRestore);
-registerWorkbenchContribution2(CodeCanvasTitleBarContribution.ID, CodeCanvasTitleBarContribution, WorkbenchPhase.BlockRestore);
+registerWorkbenchContribution2(CodeCanvasTitleBarContribution.ID, CodeCanvasTitleBarContribution, WorkbenchPhase.AfterRestored);
 registerWorkbenchContribution2(CodeCanvasStatusBarContribution.ID, CodeCanvasStatusBarContribution, WorkbenchPhase.BlockRestore);
+registerWorkbenchContribution2(CodeCanvasWebProjectContribution.ID, CodeCanvasWebProjectContribution, WorkbenchPhase.AfterRestored);
+registerWorkbenchContribution2(CodeCanvasPreviewButtonContribution.ID, CodeCanvasPreviewButtonContribution, WorkbenchPhase.AfterRestored);

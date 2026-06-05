@@ -1,8 +1,9 @@
 /*---------------------------------------------------------------------------------------------
- *  CodeCanvas AI - Snapshots timeline view (bottom panel)
- *  Visual timeline matching the reference: dots, labels, restore/compare actions.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import './media/snapshotsView.css';
 import { $, append } from '../../../../base/browser/dom.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
@@ -17,7 +18,7 @@ import { IViewDescriptorService } from '../../../common/views.js';
 import { ViewPane, IViewPaneOptions } from '../../../browser/parts/views/viewPane.js';
 
 export class CodeCanvasSnapshotsView extends ViewPane {
-	static readonly ID = 'codecanvas.snapshots';
+	static readonly ID = 'codecanvas.snapshotsView';
 	static readonly NAME = localize2('snapshots', "Snapshots");
 
 	private contentEl!: HTMLElement;
