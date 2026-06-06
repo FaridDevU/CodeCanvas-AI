@@ -198,7 +198,10 @@ export class PreviewSelectorModal extends Disposable {
 			e.stopPropagation();
 			void this.cancel();
 		};
-		this.modalDisposables.add(addDisposableListener(close, EventType.MOUSE_DOWN, closeModal));
+		this.modalDisposables.add(addDisposableListener(close, EventType.MOUSE_DOWN, e => {
+			e.preventDefault();
+			e.stopPropagation();
+		}));
 		this.modalDisposables.add(addDisposableListener(close, EventType.CLICK, closeModal));
 
 		// Toolbar: tabs + count badge.
@@ -1142,8 +1145,8 @@ export class PreviewSelectorModal extends Disposable {
 		}
 		this.closing = true;
 		this.disposedForOpen = true;
-		this.modalDisposables.clear();
 		await this.stopCaptures();
+		this.modalDisposables.clear();
 		this.resolveFn?.(result);
 		this.resolveFn = undefined;
 	}
@@ -1154,8 +1157,8 @@ export class PreviewSelectorModal extends Disposable {
 		}
 		this.closing = true;
 		this.disposedForOpen = true;
-		this.modalDisposables.clear();
 		await this.stopCaptures();
+		this.modalDisposables.clear();
 		this.resolveFn?.(undefined);
 		this.resolveFn = undefined;
 	}
