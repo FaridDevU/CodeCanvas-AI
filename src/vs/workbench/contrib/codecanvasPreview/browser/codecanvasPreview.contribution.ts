@@ -26,7 +26,7 @@ import { TerminalLocation } from '../../../../platform/terminal/common/terminal.
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { RawContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
-import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
+import { ACTIVE_GROUP, IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
@@ -240,9 +240,12 @@ async function detectConfigPort(
 async function openBrowserPreview(services: ICodeCanvasPreviewServices, url: string, title = localize('preview.title', "CodeCanvas Preview")): Promise<void> {
 	const input = services.browserViewWorkbenchService.getOrCreateLazy(PREVIEW_ID, { url, title });
 	input.navigate(url);
-	// Open in a dedicated side column so the preview lives next to the code, not as a tab
-	// in the code group. There is a single preview input, so it is reused in that column.
-	await services.editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
+	const existingPreviewGroup = services.editorGroupsService.groups.find(group => group.contains(input));
+	const hasRealEditor = !!services.editorService.activeEditor;
+	const targetGroup = existingPreviewGroup ?? (hasRealEditor ? SIDE_GROUP : ACTIVE_GROUP);
+	// Use the active group for the first preview; once code/editors exist, keep preview
+	// in a side column so it lives next to the code instead of replacing it.
+	await services.editorService.openEditor(input, { pinned: true }, targetGroup);
 }
 
 async function tryConnectToUrls(urls: string[]): Promise<string | null> {
