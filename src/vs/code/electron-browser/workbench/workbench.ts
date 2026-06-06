@@ -259,18 +259,23 @@
 				logoDiv.style.gap = '12px';
 
 				const logoImg = document.createElement('img');
-				logoImg.src = 'vs/workbench/browser/media/code-icon.png';
-				logoImg.style.width = '96px';
-				logoImg.style.height = '96px';
-				logoImg.style.opacity = '0.4';
+				logoImg.src = new URL('../../../workbench/browser/media/codecanvas-logo.png', import.meta.url).toString();
+				logoImg.style.width = '112px';
+				logoImg.style.height = '112px';
+				logoImg.style.objectFit = 'contain';
+				logoImg.style.opacity = '0.72';
+				logoImg.style.filter = 'drop-shadow(0 18px 40px rgba(0, 0, 0, 0.28))';
+				logoImg.onerror = () => {
+					logoImg.remove();
+				};
 
 				const logoText = document.createElement('div');
 				logoText.textContent = 'CodeCanvas AI';
 				logoText.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-				logoText.style.fontSize = '28px';
-				logoText.style.fontWeight = '300';
-				logoText.style.letterSpacing = '2px';
-				logoText.style.opacity = '0.4';
+				logoText.style.fontSize = '24px';
+				logoText.style.fontWeight = '400';
+				logoText.style.letterSpacing = '0';
+				logoText.style.opacity = '0.58';
 				logoText.style.color = shellForeground ?? '#CCCCCC';
 
 				logoDiv.appendChild(logoImg);
