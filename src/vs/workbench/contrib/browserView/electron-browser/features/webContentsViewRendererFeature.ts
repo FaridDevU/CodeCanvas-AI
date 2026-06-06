@@ -209,6 +209,7 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 
 	private _shouldShowPage(): boolean {
 		return this._editorVisible
+			&& !this._isCodeCanvasPreviewSelectorOpen()
 			&& !this._overlayObscured
 			&& !!this._model?.url
 			&& !this._model?.error;
@@ -254,13 +255,17 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 			return;
 		}
 		const overlays = this._overlayManager.getOverlappingOverlays(this._container);
-		const obscured = overlays.length > 0;
+		const obscured = overlays.length > 0 || this._isCodeCanvasPreviewSelectorOpen();
 		const hasNotification = overlays.some(o => o.type === BrowserOverlayType.Notification);
 		this._overlayPauseEl.classList.toggle('show-message', hasNotification);
 		if (obscured !== this._overlayObscured) {
 			this._overlayObscured = obscured;
 			this._refresh();
 		}
+	}
+
+	private _isCodeCanvasPreviewSelectorOpen(): boolean {
+		return this.editor.window.document.body.classList.contains('cc-ps-selector-open');
 	}
 
 	private async _doScreenshot(): Promise<void> {

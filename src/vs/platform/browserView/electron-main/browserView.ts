@@ -139,6 +139,7 @@ export class BrowserView extends Disposable {
 		if (!this._ownerWindow) {
 			throw new Error(`Window with ID ${owner.mainWindowId} not found`);
 		}
+		this._currentWindow = this._ownerWindow;
 		this._register(this._ownerWindow.onDidClose(() => this.dispose()));
 		this._register(this._ownerWindow.onWillLoad((e) => {
 			if (e.reason === LoadReason.LOAD) {
@@ -866,7 +867,7 @@ export class BrowserView extends Disposable {
 		this.debugger.dispose();
 
 		// Remove from parent window (guard against already-destroyed window)
-		const currentWin = this._currentWindow?.win;
+		const currentWin = this._currentWindow?.win ?? this._ownerWindow.win;
 		if (currentWin && !currentWin.isDestroyed()) {
 			currentWin.contentView.removeChildView(this._view);
 		}

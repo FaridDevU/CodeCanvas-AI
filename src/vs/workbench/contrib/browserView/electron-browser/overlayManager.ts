@@ -27,6 +27,7 @@ const OVERLAY_DEFINITIONS: ReadonlyArray<{ className: string; type: BrowserOverl
 	{ className: 'suggest-details-container', type: BrowserOverlayType.Hover },
 	{ className: 'monaco-dialog-modal-block', type: BrowserOverlayType.Dialog },
 	{ className: 'monaco-modal-editor-block', type: BrowserOverlayType.Dialog },
+	{ className: 'cc-ps-overlay', type: BrowserOverlayType.Dialog },
 	{ className: 'notifications-center', type: BrowserOverlayType.Notification },
 	{ className: 'notification-toast-container', type: BrowserOverlayType.Notification },
 	// Context view is very generic, so treat the content as unknown

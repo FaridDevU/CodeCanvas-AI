@@ -24,9 +24,12 @@ import { CDPRequest, CDPResponse } from '../../../../platform/browserView/common
 import { ILogService } from '../../../../platform/log/common/log.js';
 
 const THUMBNAIL_LOAD_TIMEOUT = 5000;
-const THUMBNAIL_PAINT_TIMEOUT = 2500;
+const THUMBNAIL_PAINT_TIMEOUT = 4000;
 const THUMBNAIL_SETTLE_DELAY = 550;
 const THUMBNAIL_NAVIGATION_DELAY = 120;
+const THUMBNAIL_CAPTURE_ATTEMPTS = 3;
+const THUMBNAIL_RETRY_ROUNDS = 4;
+const THUMBNAIL_RETRY_DELAY = 450;
 const COMPONENT_IGNORE_DIRS = new Set(['node_modules', 'out', 'dist', 'build', '.git', '.next', '.cache']);
 
 // What the modal resolves with once the user picks a file (and optionally a section).
@@ -94,17 +97,6 @@ function friendlyName(anchor: string, headingText: string): string {
 	return bare.charAt(0).toUpperCase() + bare.slice(1);
 }
 
-// Deterministic two-hue gradient from a name, so each card keeps a stable color.
-function gradientFor(name: string): string {
-	let hash = 0;
-	for (let i = 0; i < name.length; i++) {
-		hash = (hash * 31 + name.charCodeAt(i)) | 0;
-	}
-	const h1 = Math.abs(hash) % 360;
-	const h2 = (h1 + 48) % 360;
-	return `linear-gradient(135deg, hsl(${h1} 55% 28%), hsl(${h2} 60% 16%))`;
-}
-
 function normalizeComponentName(value: string): string {
 	return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
@@ -131,6 +123,7 @@ export class PreviewSelectorModal extends Disposable {
 	private selected: IPageModel | undefined;
 	private resolveFn: ((value: IPreviewSelectorResult | undefined) => void) | undefined;
 	private disposedForOpen = false;
+	private closing = false;
 	private galleryCaptureInterrupted = false;
 	private readonly thumbnailEls = new Map<string, HTMLElement[]>();
 	private readonly sectionPreviewDataUrls = new Map<string, string>();
@@ -173,6 +166,10 @@ export class PreviewSelectorModal extends Disposable {
 
 	private render(): void {
 		const container = this.layoutService.activeContainer;
+		const workbenchBody = container.ownerDocument.body;
+		workbenchBody.classList.add('cc-ps-selector-open');
+		this.modalDisposables.add({ dispose: () => workbenchBody.classList.remove('cc-ps-selector-open') });
+
 		this.overlay = append(container, $('.cc-ps-overlay'));
 		this.modalDisposables.add({ dispose: () => this.overlay.remove() });
 
@@ -196,7 +193,13 @@ export class PreviewSelectorModal extends Disposable {
 
 		const close = append(header, $('button.cc-ps-close'));
 		append(close, $(ThemeIcon.asCSSSelector(Codicon.close)));
-		this.modalDisposables.add(addDisposableListener(close, EventType.CLICK, () => this.cancel()));
+		const closeModal = (e: MouseEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			void this.cancel();
+		};
+		this.modalDisposables.add(addDisposableListener(close, EventType.MOUSE_DOWN, closeModal));
+		this.modalDisposables.add(addDisposableListener(close, EventType.CLICK, closeModal));
 
 		// Toolbar: tabs + count badge.
 		const toolbar = append(modal, $('.cc-ps-toolbar'));
@@ -216,7 +219,7 @@ export class PreviewSelectorModal extends Disposable {
 		// Dismiss on backdrop click or Escape.
 		this.modalDisposables.add(addDisposableListener(this.overlay, EventType.MOUSE_DOWN, e => {
 			if (e.target === this.overlay) {
-				this.cancel();
+				void this.cancel();
 			}
 		}));
 		this.modalDisposables.add(addDisposableListener(this.overlay, EventType.KEY_DOWN, (e: KeyboardEvent) => {
@@ -225,7 +228,7 @@ export class PreviewSelectorModal extends Disposable {
 				if (this.selected) {
 					this.backToFiles();
 				} else {
-					this.cancel();
+					void this.cancel();
 				}
 			}
 		}));
@@ -246,7 +249,6 @@ export class PreviewSelectorModal extends Disposable {
 			card.setAttribute('data-name', page.name.toLowerCase());
 
 			const thumb = append(card, $('.cc-ps-thumb'));
-			thumb.style.background = gradientFor(page.name);
 			const imgLayer = append(thumb, $('.cc-ps-thumb-img'));
 			this.registerThumbnailElement(page, imgLayer);
 			const loading = append(thumb, $('.cc-ps-thumb-loading'));
@@ -596,7 +598,6 @@ export class PreviewSelectorModal extends Disposable {
 			for (const section of page.sections) {
 				const item = append(list, $('.cc-ps-sec'));
 				const sthumb = append(item, $('.cc-ps-sec-thumb'));
-				sthumb.style.background = gradientFor(page.name + section.anchor);
 				this.registerThumbnailElement(page, sthumb);
 				const info = append(item, $('.cc-ps-sec-info'));
 				const top = append(info, $('.cc-ps-sec-top'));
@@ -659,7 +660,6 @@ export class PreviewSelectorModal extends Disposable {
 		}
 
 		const big = append(this.contextEl, $('.cc-ps-detail-preview'));
-		big.style.background = gradientFor(page.name + section.anchor);
 		const bigImg = append(big, $('.cc-ps-thumb-img'));
 		const bigLoading = append(big, $('.cc-ps-thumb-loading'));
 		bigLoading.appendChild(createShinyText(localize('cc.ps.loadingSection', "Generando vista"), { speed: 2.2, color: '#9fb3d6', shineColor: '#ffffff' }));
@@ -678,11 +678,11 @@ export class PreviewSelectorModal extends Disposable {
 			this.modalDisposables.add(addDisposableListener(btn, EventType.CLICK, run));
 		};
 		addAction(Codicon.eye, localize('cc.ps.openPreview', "Abrir en preview"), true,
-			() => this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'preview' }));
+			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'preview' }));
 		addAction(Codicon.edit, localize('cc.ps.editSection', "Editar secci\u00f3n"), false,
-			() => this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'edit' }));
+			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'edit' }));
 		addAction(Codicon.code, localize('cc.ps.goToCode', "Ir al c\u00f3digo"), false,
-			() => this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, componentFile: section.componentFile, action: 'code' }));
+			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, componentFile: section.componentFile, action: 'code' }));
 		addAction(Codicon.link, localize('cc.ps.copyLink', "Copiar enlace"), false,
 			() => this.copyLink(page, section));
 
@@ -753,7 +753,7 @@ export class PreviewSelectorModal extends Disposable {
 					if (this.disposedForOpen || this.galleryCaptureInterrupted) {
 						return;
 					}
-					await this.capturePageInto(model, page);
+					await this.capturePageInto(input.id, model, page);
 				}
 				// Second pass: retry any card that did not get a thumbnail (e.g. a page that
 				// had not painted yet on the first try). This is what makes the last card reliable.
@@ -762,41 +762,73 @@ export class PreviewSelectorModal extends Disposable {
 						return;
 					}
 					if (!page.thumbnailDataUrl) {
-						await this.capturePageInto(model, page);
+						await this.capturePageInto(input.id, model, page);
 					}
 				}
+				// Later passes: by this point the modal/grid has finished its first paint. This
+				// catches the occasional card whose WebContentsView did navigate but did not
+				// produce a bitmap during the immediate passes.
+				for (let round = 0; round < THUMBNAIL_RETRY_ROUNDS; round++) {
+					const pending = this.pages.filter(page => !page.thumbnailDataUrl);
+					if (pending.length === 0 || this.disposedForOpen || this.galleryCaptureInterrupted) {
+						return;
+					}
+					await timeout(THUMBNAIL_RETRY_DELAY * (round + 1));
+					for (const page of pending) {
+						if (this.disposedForOpen || this.galleryCaptureInterrupted) {
+							return;
+						}
+						await this.capturePageInto(input.id, model, page);
+					}
+				}
+
 			} catch (error) {
 				this.logService.warn('[PreviewSelectorModal] Could not create thumbnail capture view.', error);
 			} finally {
-				await input.model?.setVisible(false).catch(() => { });
-				input.dispose();
+				await this.disposeCaptureInput(input);
 				this.activeCaptureInputs.delete(input);
 			}
 		});
 	}
 
 	// Capture a single page into its card. Safe to call again to retry a card that failed.
-	private async capturePageInto(model: IBrowserViewModel, page: IPageModel): Promise<void> {
+	private async capturePageInto(browserId: string, model: IBrowserViewModel, page: IPageModel): Promise<boolean> {
 		if (this.disposedForOpen || this.galleryCaptureInterrupted || page.thumbnailDataUrl) {
-			return;
+			return false;
 		}
-		try {
-			const card = this.thumbnailEls.get(page.uri.toString())?.[0];
-			if (!card || !await this.layoutCaptureOver(model, card)) {
-				return;
-			}
-			await this.navigateForCapture(model, this.toCaptureUrl(page.uri));
-			if (this.disposedForOpen) {
-				return;
-			}
-			const dataUrl = await this.captureVisiblePage(model, 60);
-			page.thumbnailDataUrl = dataUrl;
-			for (const element of this.thumbnailEls.get(page.uri.toString()) ?? []) {
-				this.applyThumbnail(element, dataUrl);
-			}
-		} catch (error) {
-			this.logService.warn('[PreviewSelectorModal] Failed to capture preview thumbnail.', error);
+		const card = this.thumbnailEls.get(page.uri.toString())?.[0];
+		if (!card) {
+			return false;
 		}
+
+		let lastError: unknown;
+		for (let attempt = 1; attempt <= THUMBNAIL_CAPTURE_ATTEMPTS; attempt++) {
+			try {
+				if (this.disposedForOpen || this.galleryCaptureInterrupted || page.thumbnailDataUrl) {
+					return false;
+				}
+				if (!await this.layoutCaptureOver(model, card)) {
+					return false;
+				}
+				await this.navigateForCapture(model, this.toCaptureUrl(page.uri), attempt > 1);
+				if (this.disposedForOpen || this.galleryCaptureInterrupted) {
+					return false;
+				}
+				await timeout(THUMBNAIL_NAVIGATION_DELAY * attempt);
+				const dataUrl = await this.captureVisiblePage(browserId, model, 60);
+				page.thumbnailDataUrl = dataUrl;
+				for (const element of this.thumbnailEls.get(page.uri.toString()) ?? []) {
+					this.applyThumbnail(element, dataUrl);
+				}
+				return true;
+			} catch (error) {
+				lastError = error;
+				await timeout(THUMBNAIL_RETRY_DELAY * attempt);
+			}
+		}
+
+		this.logService.warn('[PreviewSelectorModal] Failed to capture preview thumbnail.', lastError);
+		return false;
 	}
 
 	private async captureSectionPreview(page: IPageModel, section: ISectionModel, element: HTMLElement): Promise<void> {
@@ -827,8 +859,7 @@ export class PreviewSelectorModal extends Disposable {
 			} catch (error) {
 				this.logService.warn('[PreviewSelectorModal] Failed to capture section preview.', error);
 			} finally {
-				await input.model?.setVisible(false).catch(() => { });
-				input.dispose();
+				await this.disposeCaptureInput(input);
 				this.activeCaptureInputs.delete(input);
 			}
 		});
@@ -836,26 +867,67 @@ export class PreviewSelectorModal extends Disposable {
 
 	// Force-hide and dispose any capture views still alive, even if their task is stuck
 	// awaiting, so no native BrowserView lingers over the workbench after the modal closes.
-	private stopCaptures(): void {
-		for (const input of this.activeCaptureInputs) {
-			try {
-				void input.model?.setVisible(false);
-			} catch {
-				// ignore
-			}
-			try {
-				input.dispose();
-			} catch {
-				// ignore
-			}
-		}
+	private async stopCaptures(): Promise<void> {
+		await Promise.all([...this.activeCaptureInputs].map(input => this.disposeCaptureInput(input)));
 		this.activeCaptureInputs.clear();
+
+		// The capture queue may still contain tasks that were already scheduled before the
+		// user clicked an action. Wait briefly so their finally blocks can run and remove
+		// any WebContentsView before the real preview/code view is shown.
+		await Promise.race([
+			this.captureQueue,
+			timeout(1500)
+		]).catch(() => { });
 	}
 
-	private async navigateForCapture(model: IBrowserViewModel, url: string): Promise<void> {
+	private async disposeCaptureInput(input: BrowserEditorInput): Promise<void> {
+		let model = input.model;
+		if (!model && !input.isDisposed()) {
+			try {
+				model = await Promise.race([
+					input.resolve(),
+					timeout(750).then(() => undefined)
+				]);
+			} catch {
+				// The model may be mid-dispose or fail to resolve during shutdown.
+			}
+		}
+
+		if (model) {
+			try {
+				await model.setVisible(false);
+			} catch {
+				// ignore
+			}
+
+			const closed = Event.toPromise(model.onDidClose).catch(() => undefined);
+			try {
+				input.dispose(true);
+			} catch {
+				// ignore
+			}
+			await Promise.race([
+				closed,
+				timeout(750)
+			]).catch(() => { });
+			return;
+		}
+
+		try {
+			input.dispose(true);
+		} catch {
+			// ignore
+		}
+	}
+
+	private async navigateForCapture(model: IBrowserViewModel, url: string, forceReload = false): Promise<void> {
 		const didNavigate = Event.toPromise(Event.filter(model.onDidNavigate, event => this.isSameCaptureUrl(event.url, url)));
 		try {
-			await model.loadURL(url);
+			if (forceReload && this.isSameCaptureUrl(model.url, url)) {
+				await model.reload(true);
+			} else {
+				await model.loadURL(url);
+			}
 		} catch (error) {
 			if (!this.isExpectedNavigationAbort(error)) {
 				throw error;
@@ -913,7 +985,7 @@ export class PreviewSelectorModal extends Disposable {
 		return true;
 	}
 
-	private async captureVisiblePage(model: IBrowserViewModel, quality: number): Promise<string> {
+	private async captureVisiblePage(browserId: string, model: IBrowserViewModel, quality: number): Promise<string> {
 		try {
 			const screenshot = await Promise.race([
 				model.captureScreenshot({ format: 'jpeg', quality, awaitNextPaint: true }),
@@ -926,9 +998,24 @@ export class PreviewSelectorModal extends Disposable {
 				const screenshot = await model.captureScreenshot({ format: 'jpeg', quality });
 				return `data:image/jpeg;base64,${encodeBase64(screenshot)}`;
 			} catch (secondError) {
-				throw new Error(`Thumbnail capture failed after retry: ${firstError instanceof Error ? firstError.message : String(firstError)}; ${secondError instanceof Error ? secondError.message : String(secondError)}`);
+				try {
+					return await this.captureViewportWithCDP(browserId, quality);
+				} catch (thirdError) {
+					throw new Error(`Thumbnail capture failed after retry: ${firstError instanceof Error ? firstError.message : String(firstError)}; ${secondError instanceof Error ? secondError.message : String(secondError)}; ${thirdError instanceof Error ? thirdError.message : String(thirdError)}`);
+				}
 			}
 		}
+	}
+
+	private async captureViewportWithCDP(browserId: string, quality: number): Promise<string> {
+		return this.withPageSession(browserId, async send => {
+			const captured = await send<{ data: string }>('Page.captureScreenshot', {
+				format: 'jpeg',
+				quality,
+				captureBeyondViewport: false
+			});
+			return `data:image/jpeg;base64,${captured.data}`;
+		});
 	}
 
 	private async captureElementByIdWithCDP(browserId: string, elementId: string): Promise<string> {
@@ -1049,25 +1136,34 @@ export class PreviewSelectorModal extends Disposable {
 		}
 	}
 
-	private finish(result: IPreviewSelectorResult): void {
+	private async finish(result: IPreviewSelectorResult): Promise<void> {
+		if (this.closing) {
+			return;
+		}
+		this.closing = true;
 		this.disposedForOpen = true;
-		this.stopCaptures();
+		this.modalDisposables.clear();
+		await this.stopCaptures();
 		this.resolveFn?.(result);
 		this.resolveFn = undefined;
-		this.modalDisposables.clear();
 	}
 
-	private cancel(): void {
+	private async cancel(): Promise<void> {
+		if (this.closing) {
+			return;
+		}
+		this.closing = true;
 		this.disposedForOpen = true;
-		this.stopCaptures();
+		this.modalDisposables.clear();
+		await this.stopCaptures();
 		this.resolveFn?.(undefined);
 		this.resolveFn = undefined;
-		this.modalDisposables.clear();
 	}
 
 	override dispose(): void {
 		this.disposedForOpen = true;
-		this.stopCaptures();
+		this.modalDisposables.clear();
+		void this.stopCaptures();
 		super.dispose();
 	}
 }

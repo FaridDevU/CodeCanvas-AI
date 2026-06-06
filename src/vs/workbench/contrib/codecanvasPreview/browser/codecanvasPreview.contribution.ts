@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/shinyText.css';
+import { mainWindow } from '../../../../base/browser/window.js';
 import { timeout } from '../../../../base/common/async.js';
 import { Event } from '../../../../base/common/event.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -46,6 +47,7 @@ const PREVIEW_ID = 'codecanvas.preview';
 const STATUS_ID = 'status.codecanvasPreview';
 const PREVIEW_LOAD_TIMEOUT = 8000;
 const PREVIEW_SETTLE_DELAY = 250;
+let previewSelectorOpen = false;
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
 
@@ -362,15 +364,60 @@ async function activateVisualEditForAnchor(services: ICodeCanvasPreviewServices,
 
 // Open the visual preview selector modal and act on the chosen file/section.
 async function openPreviewSelector(services: ICodeCanvasPreviewServices, root: URI, pages: URI[]): Promise<void> {
+	if (previewSelectorOpen) {
+		return;
+	}
+	previewSelectorOpen = true;
 	const modal = services.instantiationService.createInstance(PreviewSelectorModal);
-	const existingPreviewModel = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID)?.model;
+	const existingPreviewInput = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+	let existingPreviewModel = existingPreviewInput?.model;
+	if (existingPreviewInput && !existingPreviewModel) {
+		try {
+			existingPreviewModel = await Promise.race([
+				existingPreviewInput.resolve(),
+				timeout(1000).then(() => undefined)
+			]);
+		} catch {
+			// The preview can be mid-dispose; in that case there is nothing to hide.
+		}
+	}
 	const restoreExistingPreview = existingPreviewModel?.visible === true;
+	let suppressingExistingPreview = false;
+	const hideExistingPreview = async () => {
+		if (suppressingExistingPreview) {
+			return;
+		}
+		if (!existingPreviewModel) {
+			return;
+		}
+		suppressingExistingPreview = true;
+		try {
+			await existingPreviewModel.layout({
+				windowId: mainWindow.vscodeWindowId,
+				x: -32000,
+				y: -32000,
+				width: 1,
+				height: 1,
+				zoomFactor: 1,
+				cornerRadius: 0
+			}).catch(() => { });
+			await existingPreviewModel.setVisible(false).catch(() => { });
+		} finally {
+			suppressingExistingPreview = false;
+		}
+	};
+	let hideExistingPreviewHandle: number | undefined;
 	let result: Awaited<ReturnType<PreviewSelectorModal['open']>> = undefined;
-	if (restoreExistingPreview) {
-		await existingPreviewModel.setVisible(false).catch(() => { });
+	if (existingPreviewModel) {
+		await hideExistingPreview();
+		hideExistingPreviewHandle = mainWindow.setInterval(() => void hideExistingPreview(), 16);
 	}
 	try {
 		result = await modal.open(pages, root);
+		if (hideExistingPreviewHandle) {
+			mainWindow.clearInterval(hideExistingPreviewHandle);
+			hideExistingPreviewHandle = undefined;
+		}
 		if (!result) {
 			return;
 		}
@@ -385,10 +432,17 @@ async function openPreviewSelector(services: ICodeCanvasPreviewServices, root: U
 			await activateVisualEditForAnchor(services, result.anchor);
 		}
 	} finally {
-		if ((!result || result.action === 'code') && restoreExistingPreview) {
+		if (hideExistingPreviewHandle) {
+			mainWindow.clearInterval(hideExistingPreviewHandle);
+		}
+		if ((!result || result.action === 'code') && restoreExistingPreview && existingPreviewModel) {
+			if (existingPreviewInput) {
+				await services.editorService.openEditor(existingPreviewInput, { pinned: true }, SIDE_GROUP).catch(() => { });
+			}
 			await existingPreviewModel.setVisible(true).catch(() => { });
 		}
 		modal.dispose();
+		previewSelectorOpen = false;
 	}
 }
 

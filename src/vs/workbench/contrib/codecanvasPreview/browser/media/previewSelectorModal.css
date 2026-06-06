@@ -201,6 +201,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	background: linear-gradient(135deg, #111827 0%, #0c1220 100%);
 	background-position: top center;
 	background-size: cover;
 }
@@ -214,7 +215,7 @@
 	display: none;
 }
 
-/* Captured image layer: fades in over the gradient once ready. */
+/* Captured image layer: fades in over the neutral placeholder once ready. */
 .cc-ps-thumb-img {
 	position: absolute;
 	inset: 0;
@@ -431,6 +432,7 @@
 	height: 34px;
 	border-radius: 7px;
 	flex-shrink: 0;
+	background: linear-gradient(135deg, #111827 0%, #0c1220 100%);
 	background-position: top center;
 	background-size: cover;
 }
@@ -498,6 +500,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	background: linear-gradient(135deg, #111827 0%, #0c1220 100%);
 	background-position: top center;
 	background-size: cover;
 }
