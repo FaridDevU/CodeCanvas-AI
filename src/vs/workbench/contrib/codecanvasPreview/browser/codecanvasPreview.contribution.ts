@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/shinyText.css';
+import { timeout } from '../../../../base/common/async.js';
+import { Event } from '../../../../base/common/event.js';
 import { URI } from '../../../../base/common/uri.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { CodeCanvasTitleBarContribution } from './titleBarDeviceControl.js';
@@ -12,8 +14,9 @@ import { observableValue, ISettableObservable } from '../../../../base/common/ob
 import { localize, localize2 } from '../../../../nls.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { FileChangeType, IFileService } from '../../../../platform/files/common/files.js';
-import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { ServicesAccessor, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
@@ -21,8 +24,9 @@ import { Registry } from '../../../../platform/registry/common/platform.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { RawContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
+import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment } from '../../../services/statusbar/browser/statusbar.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
@@ -35,9 +39,13 @@ import { Codicon } from '../../../../base/common/codicons.js';
 import { generateDiff, createBackup, IDomDelta } from '../common/EdicionVisual/diffEngine.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
 import { CodeCanvasSnapshotsView } from './snapshotsView.js';
+import { PreviewSelectorModal } from './previewSelectorModal.js';
+import { Range } from '../../../../editor/common/core/range.js';
 
 const PREVIEW_ID = 'codecanvas.preview';
 const STATUS_ID = 'status.codecanvasPreview';
+const PREVIEW_LOAD_TIMEOUT = 8000;
+const PREVIEW_SETTLE_DELAY = 250;
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
 
@@ -111,6 +119,9 @@ interface ICodeCanvasPreviewServices {
 	readonly quickInputService: IQuickInputService;
 	readonly terminalService: ITerminalService;
 	readonly storageService: IStorageService;
+	readonly instantiationService: IInstantiationService;
+	readonly editorGroupsService: IEditorGroupsService;
+	readonly commandService: ICommandService;
 }
 
 function getPreviewServices(accessor: ServicesAccessor): ICodeCanvasPreviewServices {
@@ -122,7 +133,10 @@ function getPreviewServices(accessor: ServicesAccessor): ICodeCanvasPreviewServi
 		notificationService: accessor.get(INotificationService),
 		quickInputService: accessor.get(IQuickInputService),
 		terminalService: accessor.get(ITerminalService),
-		storageService: accessor.get(IStorageService)
+		storageService: accessor.get(IStorageService),
+		instantiationService: accessor.get(IInstantiationService),
+		editorGroupsService: accessor.get(IEditorGroupsService),
+		commandService: accessor.get(ICommandService)
 	};
 }
 
@@ -272,35 +286,113 @@ async function openLocalhostPreview(services: ICodeCanvasPreviewServices): Promi
 	await openBrowserPreview(services, normalizePreviewUrl(value), localize('localhostPreview.editorTitle', "CodeCanvas Localhost Preview"));
 }
 
-const PREVIEW_PAGE_KEY = 'codecanvas.preview.lastPage';
-
-// Resolve which HTML page to preview: 1 page → that one; remembered choice → reuse it;
-// otherwise ask. forceChoose skips the remembered value.
-async function pickPreviewPage(services: ICodeCanvasPreviewServices, root: URI, pages: URI[], _forceChoose: boolean): Promise<URI | undefined> {
-	if (pages.length === 1) {
-		return pages[0];
-	}
-	const rel = (u: URI) => u.path.slice(root.path.length).replace(/^\/+/, '');
-	type PageItem = IQuickPickItem & { uri: URI };
-	const items: PageItem[] = pages.map(p => ({ label: rel(p), uri: p }));
-
-	// Pre-select the last previewed page, but always let the user choose again.
-	const last = services.storageService.get(PREVIEW_PAGE_KEY, StorageScope.WORKSPACE);
-	const activeItem = last ? items.find(i => i.uri.toString() === last) : undefined;
-
-	const picked = await services.quickInputService.pick<PageItem>(items, {
-		title: localize('preview.pickPage.title', "Choose a page to preview"),
-		placeHolder: localize('preview.pickPage.placeholder', "Select which HTML page to open"),
-		activeItem
-	});
-	if (!picked) {
-		return undefined;
-	}
-	services.storageService.store(PREVIEW_PAGE_KEY, picked.uri.toString(), StorageScope.WORKSPACE, StorageTarget.MACHINE);
-	return picked.uri;
+function getCodeEditorGroup(services: ICodeCanvasPreviewServices) {
+	// Open code in a dedicated column (the leftmost group that is not the preview), so code
+	// and preview never share the same column.
+	const previewInput = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+	const previewGroup = previewInput ? services.editorGroupsService.groups.find(group => group.contains(previewInput)) : undefined;
+	return services.editorGroupsService.groups.find(group => group.id !== previewGroup?.id)
+		?? services.editorGroupsService.groups[0];
 }
 
-async function openWorkspacePreview(services: ICodeCanvasPreviewServices, forceChoosePage = false): Promise<void> {
+async function openSmartCodeTarget(services: ICodeCanvasPreviewServices, root: URI, resource: URI, anchor: string | undefined, componentFile: string | undefined): Promise<void> {
+	const target = componentFile ? URI.joinPath(root, ...componentFile.split(/[\\/]+/)) : resource;
+	const lineNumber = !componentFile && anchor ? await findSectionLine(services.fileService, resource, anchor.slice(1)) : undefined;
+	await services.commandService.executeCommand('revealInExplorer', target);
+	await services.editorService.openEditor({
+		resource: target,
+		options: lineNumber ? { selection: new Range(lineNumber, 1, lineNumber, 1), pinned: true } : { pinned: true }
+	}, getCodeEditorGroup(services));
+}
+
+async function findSectionLine(fileService: IFileService, resource: URI, id: string): Promise<number | undefined> {
+	if (!id) {
+		return undefined;
+	}
+	try {
+		const content = await fileService.readFile(resource);
+		const lines = content.value.toString().split(/\r\n|\r|\n/);
+		const quotedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const idPattern = new RegExp(`\\bid\\s*=\\s*["']${quotedId}["']`);
+		for (let index = 0; index < lines.length; index++) {
+			if (idPattern.test(lines[index])) {
+				return index + 1;
+			}
+		}
+	} catch {
+		// Fall back to opening the file if the lookup fails.
+	}
+	return undefined;
+}
+
+async function waitForPreviewIdle(model: { readonly loading: boolean; readonly onDidChangeLoadingState: Event<{ readonly loading: boolean }> }): Promise<void> {
+	if (model.loading) {
+		await Promise.race([
+			Event.toPromise(Event.filter(model.onDidChangeLoadingState, e => !e.loading)),
+			timeout(PREVIEW_LOAD_TIMEOUT)
+		]);
+	}
+	await timeout(PREVIEW_SETTLE_DELAY);
+}
+
+async function activateVisualEditForAnchor(services: ICodeCanvasPreviewServices, anchor: string | undefined): Promise<void> {
+	if (!anchor?.startsWith('#')) {
+		return;
+	}
+	const input = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+	if (!input) {
+		return;
+	}
+	const model = input.model ?? await input.resolve();
+	try {
+		await waitForPreviewIdle(model);
+		const trackedElementId = await Promise.race([
+			model.trackElementBySelector(anchor),
+			timeout(PREVIEW_LOAD_TIMEOUT).then(() => undefined)
+		]);
+		if (!trackedElementId) {
+			throw new Error(`No tracked element found for selector ${anchor}`);
+		}
+		await model.toggleVisualEdit(trackedElementId, true);
+		services.notificationService.info(localize('visualEdit.sectionActive', "Edita la seccion seleccionada en el preview. Presiona Escape para cancelar."));
+	} catch {
+		services.notificationService.warn(localize('visualEdit.sectionFailed', "No se pudo activar la edicion visual para esta seccion."));
+	}
+}
+
+// Open the visual preview selector modal and act on the chosen file/section.
+async function openPreviewSelector(services: ICodeCanvasPreviewServices, root: URI, pages: URI[]): Promise<void> {
+	const modal = services.instantiationService.createInstance(PreviewSelectorModal);
+	const existingPreviewModel = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID)?.model;
+	const restoreExistingPreview = existingPreviewModel?.visible === true;
+	let result: Awaited<ReturnType<PreviewSelectorModal['open']>> = undefined;
+	if (restoreExistingPreview) {
+		await existingPreviewModel.setVisible(false).catch(() => { });
+	}
+	try {
+		result = await modal.open(pages, root);
+		if (!result) {
+			return;
+		}
+		modal.dispose();
+		if (result.action === 'code') {
+			await openSmartCodeTarget(services, root, result.uri, result.anchor, result.componentFile);
+			return;
+		}
+		const url = result.uri.toString() + (result.anchor ?? '');
+		await openBrowserPreview(services, url, localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
+		if (result.action === 'edit') {
+			await activateVisualEditForAnchor(services, result.anchor);
+		}
+	} finally {
+		if ((!result || result.action === 'code') && restoreExistingPreview) {
+			await existingPreviewModel.setVisible(true).catch(() => { });
+		}
+		modal.dispose();
+	}
+}
+
+async function openWorkspacePreview(services: ICodeCanvasPreviewServices, _forceChoosePage = false): Promise<void> {
 	const root = getWorkspaceRoot(services.contextService);
 
 	if (!root) {
@@ -314,14 +406,12 @@ async function openWorkspacePreview(services: ICodeCanvasPreviewServices, forceC
 		? await hasNpmDevScript(services.fileService, packageJson)
 		: { hasScript: false, devScriptValue: '' };
 
-	// Static site (no dev script): let the user pick which .html page to preview.
+	// Static site (no dev script): open the visual preview selector so the user can
+	// see every detected entry file as a live card and pick the right one.
 	if (!hasScript) {
 		const pages = await listPreviewablePages(root, services.fileService);
 		if (pages.length > 0) {
-			const page = await pickPreviewPage(services, root, pages, forceChoosePage);
-			if (page) {
-				await openBrowserPreview(services, page.toString(), localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
-			}
+			await openPreviewSelector(services, root, pages);
 			return;
 		}
 		await openLocalhostPreview(services);
