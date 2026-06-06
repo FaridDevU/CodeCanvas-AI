@@ -322,6 +322,10 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 		return this._getBrowserView(id).inspector.toggleVisualEdit(elementId, enabled);
 	}
 
+	async trackElementBySelector(id: string, selector: string): Promise<string | undefined> {
+		return this._getBrowserView(id).inspector.trackElementBySelector(selector);
+	}
+
 	async toggleAreaSelection(id: string, enabled?: boolean): Promise<void> {
 		return this._getBrowserView(id).inspector.toggleAreaSelection(enabled);
 	}

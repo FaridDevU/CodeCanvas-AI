@@ -285,6 +285,7 @@ export interface IBrowserViewModel extends IDisposable {
 	getConsoleLogs(): Promise<string>;
 	toggleElementSelection(enabled?: boolean): Promise<void>;
 	toggleVisualEdit(elementId: string, enabled?: boolean): Promise<void>;
+	trackElementBySelector(selector: string): Promise<string | undefined>;
 	toggleAreaSelection(enabled?: boolean): Promise<void>;
 	setDevice(device: IBrowserDeviceProfile | undefined): Promise<void>;
 }
@@ -689,6 +690,10 @@ export class BrowserViewModel extends Disposable implements IBrowserViewModel {
 
 	async toggleVisualEdit(elementId: string, enabled?: boolean): Promise<void> {
 		return this.browserViewService.toggleVisualEdit(this.id, elementId, enabled);
+	}
+
+	async trackElementBySelector(selector: string): Promise<string | undefined> {
+		return this.browserViewService.trackElementBySelector(this.id, selector);
 	}
 
 	async toggleAreaSelection(enabled?: boolean): Promise<void> {

@@ -393,6 +393,20 @@ export class BrowserViewInspector extends Disposable {
 		start();
 	}
 
+	async trackElementBySelector(selector: string): Promise<string | undefined> {
+		for (const inspector of this._registry.inspectors) {
+			try {
+				const elementId = await inspector.trackElementBySelector(selector);
+				if (elementId) {
+					return elementId;
+				}
+			} catch {
+				// Best effort across frames.
+			}
+		}
+		return undefined;
+	}
+
 	/**
 	 * Terminate the current area-pick session, firing `onDidPickArea` exactly once.
 	 * No-op if no session is active. Uses `clearAndLeak` to avoid recursing into

@@ -300,6 +300,16 @@ export class BrowserViewFrameInspector extends Disposable {
 		return { ...await this.extractNodeData({ objectId: result.objectId }), elementId };
 	}
 
+	async trackElementBySelector(selector: string): Promise<string | undefined> {
+		const { result } = await this.connection.sendCommand('Runtime.evaluate', {
+			expression: `window.__vscode_helpers?.trackElementBySelector(${JSON.stringify(selector)})`,
+			returnByValue: true,
+			uniqueContextId: this._uniqueContextId,
+		}) as { result: { value?: string } };
+
+		return result?.value;
+	}
+
 	startVisualEdit(elementId: string): void {
 		this.frame.postMessage('vscode:browserView:startVisualEdit', { elementId });
 	}

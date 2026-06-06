@@ -564,6 +564,11 @@ export interface IBrowserViewService {
 	toggleVisualEdit(id: string, elementId: string, enabled?: boolean): Promise<void>;
 
 	/**
+	 * Track the first element matching a DOM selector and return its tracked element id.
+	 */
+	trackElementBySelector(id: string, selector: string): Promise<string | undefined>;
+
+	/**
 	 * Toggle drag-to-select area picking on the top frame of a browser view.
 	 * The pick result (rectangle, or `undefined` on cancellation) is delivered via
 	 * {@link onDynamicDidPickArea}. UI toggle state is delivered via

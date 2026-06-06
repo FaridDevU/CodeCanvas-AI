@@ -231,6 +231,10 @@ function init() {
 
 	const mainWorldHelpers = {
 		getElement,
+		trackElementBySelector(selector: string): string | undefined {
+			const element = document.querySelector(selector);
+			return element ? track(element) : undefined;
+		},
 		/** Opaque token exposed for CDP-side frame matching. */
 		getFrameToken(): string { return frameToken; }
 	};
