@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Emitter } from '../../../base/common/event.js';
-import { Disposable, DisposableMap, IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { ILogService } from '../../log/common/log.js';
 import { CDPEvent, CDPTargetInfo, ICDPConnection } from '../common/cdp/types.js';
 import { BrowserView } from './browserView.js';
@@ -99,11 +99,41 @@ export class BrowserViewDebugger extends Disposable {
 			flatten: true
 		}) as { sessionId: string };
 
-		if (!this._sessions.has(result.sessionId)) {
-			throw new Error(`Failed to attach to target ${targetId}`);
+		const existing = this._sessions.get(result.sessionId);
+		if (existing) {
+			return existing;
 		}
 
-		return this._sessions.get(result.sessionId)!;
+		// The Target.attachedToTarget event that registers the session can arrive
+		// after attachToTarget resolves; wait briefly for it instead of failing.
+		return this._waitForSession(result.sessionId);
+	}
+
+	private _waitForSession(sessionId: string): Promise<ICDPConnection> {
+		return new Promise<ICDPConnection>((resolve, reject) => {
+			const store = new DisposableStore();
+			const settle = (session: ICDPConnection | undefined, error?: Error) => {
+				store.dispose();
+				if (session) {
+					resolve(session);
+				} else {
+					reject(error ?? new Error(`Failed to attach to target session ${sessionId}`));
+				}
+			};
+			const timer = setTimeout(() => settle(undefined), 5000);
+			store.add(toDisposable(() => clearTimeout(timer)));
+			store.add(this.onSessionCreated(() => {
+				const session = this._sessions.get(sessionId);
+				if (session) {
+					settle(session);
+				}
+			}));
+			// It may have registered between the initial check and wiring the listener.
+			const session = this._sessions.get(sessionId);
+			if (session) {
+				settle(session);
+			}
+		});
 	}
 
 	async getTargetInfo(): Promise<CDPTargetInfo> {
@@ -209,7 +239,9 @@ export class BrowserViewDebugger extends Disposable {
 		} else if (method === 'Target.targetDestroyed') {
 			const p = params as { targetId: string };
 			this.destroyTarget(p.targetId);
-		} else if (method === 'Target.targetInfoChanged' && !sessionId) {
+		} else if (method === 'Target.targetInfoChanged') {
+			// Accept updates from sub-sessions too (iframes/workers); the known-target
+			// guard keeps us from reacting to unrelated targets.
 			const p = params as { targetInfo: CDPTargetInfo };
 			if (this._knownTargets.has(p.targetInfo.targetId)) {
 				this._knownTargets.set(p.targetInfo.targetId, p.targetInfo);

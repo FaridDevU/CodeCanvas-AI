@@ -28,11 +28,17 @@ export class BrowserViewCDPTarget extends Disposable implements ICDPTarget {
 
 	private _isDisposed = false;
 
+	protected readonly _targetInfo: CDPTargetInfo;
+
 	constructor(
 		readonly view: BrowserView,
-		protected readonly _targetInfo: CDPTargetInfo
+		targetInfo: CDPTargetInfo
 	) {
 		super();
+
+		// Copy so our in-place title/url updates never mutate an object the caller
+		// (e.g. the debugger) might reuse for another target.
+		this._targetInfo = { ...targetInfo };
 
 		this._register(this.view.debugger.onTargetInfoChanged(info => {
 			if (info.targetId !== this._targetInfo.targetId) {

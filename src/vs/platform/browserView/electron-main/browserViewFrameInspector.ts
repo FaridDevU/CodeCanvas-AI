@@ -213,11 +213,15 @@ export class BrowserViewFrameInspector extends Disposable {
 	}
 
 	private async _enableDomains(): Promise<void> {
-		await this.connection.sendCommand('DOM.enable');
-		await this.connection.sendCommand('Overlay.enable');
-		await this.connection.sendCommand('CSS.enable');
-		await this.connection.sendCommand('Runtime.enable');
-		await this.connection.sendCommand('Page.enable');
+		// Enable independently so one failing domain (e.g. a frame that died mid-setup)
+		// doesn't leave the rest disabled and the inspector in a half-working state.
+		await Promise.all([
+			this.connection.sendCommand('DOM.enable'),
+			this.connection.sendCommand('Overlay.enable'),
+			this.connection.sendCommand('CSS.enable'),
+			this.connection.sendCommand('Runtime.enable'),
+			this.connection.sendCommand('Page.enable'),
+		].map(p => p.catch(() => { })));
 	}
 
 	override dispose() {
@@ -349,23 +353,32 @@ export class BrowserViewFrameInspector extends Disposable {
 	 */
 	getElementHandle(elementId: string): IFrameElementHandle {
 		let disposed = false;
+		// The frame may be destroyed by navigation/close between calls; postMessage
+		// throws in that case, so guard every send.
+		const post = (channel: string, message: unknown) => {
+			try {
+				this.frame.postMessage(channel, message);
+			} catch {
+				// Frame is gone; nothing to message.
+			}
+		};
 		return {
 			addToChat: async () => {
 				const nodeData = await this.extractNodeDataById(elementId);
 				this._onDidInspectElement.fire(nodeData);
 			},
 			highlight: async () => {
-				this.frame.postMessage('vscode:browserView:highlightElement', { elementId });
+				post('vscode:browserView:highlightElement', { elementId });
 			},
 			hideHighlight: async () => {
-				this.frame.postMessage('vscode:browserView:hideHighlight', {});
+				post('vscode:browserView:hideHighlight', {});
 			},
 			dispose: () => {
 				if (disposed) {
 					return;
 				}
 				disposed = true;
-				this.frame.postMessage('vscode:browserView:hideHighlight', {});
+				post('vscode:browserView:hideHighlight', {});
 			}
 		};
 	}

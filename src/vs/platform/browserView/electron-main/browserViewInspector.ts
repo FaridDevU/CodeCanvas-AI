@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Emitter, Event } from '../../../base/common/event.js';
-import { Disposable, IDisposable, MutableDisposable } from '../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../base/common/lifecycle.js';
 import { IElementData, IBrowserViewTheme, IBrowserViewRect, IVisualEditDelta } from '../common/browserView.js';
 import { ICDPConnection } from '../common/cdp/types.js';
 import type { BrowserView } from './browserView.js';
@@ -169,8 +169,16 @@ export class BrowserViewInspector extends Disposable {
 	 * Called for every session: the main page session (sees same-origin frames)
 	 * and each cross-origin target session (sees only its own frame).
 	 */
+	private readonly _watchedSessions = new Set<ICDPConnection>();
+
 	private _watchSession(session: ICDPConnection): void {
-		this._register(session.onEvent(async event => {
+		// Each iframe target leads here; don't stack listeners for the same session.
+		if (this._watchedSessions.has(session)) {
+			return;
+		}
+		this._watchedSessions.add(session);
+		const sessionStore = this._register(new DisposableStore());
+		sessionStore.add(session.onEvent(async event => {
 			if (event.method === 'Runtime.executionContextCreated') {
 				const context = (event.params as {
 					context: {
@@ -214,9 +222,11 @@ export class BrowserViewInspector extends Disposable {
 			}
 		}));
 
-		Event.once(session.onClose)(() => {
+		sessionStore.add(Event.once(session.onClose)(() => {
 			this._registry.disposeBySession(session);
-		});
+			this._watchedSessions.delete(session);
+			sessionStore.dispose();
+		}));
 
 		// Enable Runtime + Page to start receiving context and frame events
 		session.sendCommand('Runtime.enable').catch(() => { });

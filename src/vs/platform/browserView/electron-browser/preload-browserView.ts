@@ -9,6 +9,8 @@
 // Only `import type` is allowed in preload scripts — Electron preloads cannot resolve module imports at runtime.
 import type { IBrowserViewTheme, IBrowserViewRect, IVisualEditDelta } from '../common/browserView.js';
 
+const VISUAL_EDIT_SELECTOR_PREFIX = 'selector:';
+
 /**
  * Preload script for pages loaded in Integrated Browser
  *
@@ -179,7 +181,7 @@ function init() {
 		areaPicker.stop();
 	});
 	ipcRenderer.on('vscode:browserView:startVisualEdit', (_event: unknown, { elementId }: { elementId: string }) => {
-		const element = getElement(elementId);
+		const element = getVisualEditElement(elementId);
 		if (element instanceof HTMLElement) {
 			visualEditor.start(elementId, element);
 		}
@@ -205,6 +207,17 @@ function init() {
 				return contextMenuTargetRef?.deref() ?? null;
 			default:
 				return trackedElementsById.get(id)?.deref() ?? null;
+		}
+	};
+
+	const getVisualEditElement = (id: string): Element | null => {
+		if (!id.startsWith(VISUAL_EDIT_SELECTOR_PREFIX)) {
+			return getElement(id);
+		}
+		try {
+			return document.querySelector(id.slice(VISUAL_EDIT_SELECTOR_PREFIX.length));
+		} catch {
+			return null;
 		}
 	};
 
@@ -818,6 +831,7 @@ class VisualElementEditor {
 		handle.addEventListener('pointerdown', e => this._onPointerDown(e, 'resize'));
 		window.addEventListener('pointermove', this._onPointerMove, true);
 		window.addEventListener('pointerup', this._onPointerUp, true);
+		window.addEventListener('pointercancel', this._onPointerCancel, true);
 		window.addEventListener('keydown', this._onKeyDown, true);
 		window.addEventListener('scroll', () => this._render(), { passive: true, capture: true });
 		window.addEventListener('resize', () => this._render());
@@ -901,6 +915,11 @@ class VisualElementEditor {
 		e.preventDefault();
 		e.stopPropagation();
 
+		try {
+			this._box.releasePointerCapture(e.pointerId);
+		} catch {
+			// Pointer capture may already be released.
+		}
 		this._dragStart = undefined;
 		const styles = window.getComputedStyle(this._target);
 		this._onCommit({
@@ -915,6 +934,21 @@ class VisualElementEditor {
 			}
 		});
 		this.stop();
+	};
+
+	// If the pointer is cancelled (drag leaves the window, touch cancel, etc.)
+	// pointerup never arrives, so abort the in-progress drag explicitly.
+	private _onPointerCancel = (e: PointerEvent): void => {
+		if (!this._dragStart) {
+			return;
+		}
+		this._dragStart = undefined;
+		try {
+			this._box.releasePointerCapture(e.pointerId);
+		} catch {
+			// Pointer capture may already be released.
+		}
+		this._render();
 	};
 
 	private _onKeyDown = (e: KeyboardEvent): void => {

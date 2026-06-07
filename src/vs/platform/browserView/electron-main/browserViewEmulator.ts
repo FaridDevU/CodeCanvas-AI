@@ -88,7 +88,6 @@ export class BrowserViewEmulator extends Disposable {
 	}
 
 	private _reapply(): void {
-		console.log('[BrowserViewEmulator] _reapply', this._device, 'safe=', this.isSafeToApplyEmulation());
 		if (!this._device || !this.isSafeToApplyEmulation()) {
 			return;
 		}
@@ -114,16 +113,23 @@ export class BrowserViewEmulator extends Disposable {
 			scale: s * z,
 		};
 
-		// There's a bug where `screenPosition: 'mobile'` doesn't apply scaling correctly on the first call of enabling emulation,
-		// so we have to first enable emulation in desktop mode and then switch it to mobile below.
-		if (mobile && !last) {
-			this.browser.webContents.enableDeviceEmulation({
-				...params,
-				screenPosition: 'desktop',
-			});
-		}
+		// The webContents can be destroyed between the safety check above and these
+		// native calls (e.g. a concurrent dispose), so guard against throwing.
+		try {
+			// There's a bug where `screenPosition: 'mobile'` doesn't apply scaling correctly on the first call of enabling emulation,
+			// so we have to first enable emulation in desktop mode and then switch it to mobile below.
+			if (mobile && !last) {
+				this.browser.webContents.enableDeviceEmulation({
+					...params,
+					screenPosition: 'desktop',
+				});
+			}
 
-		this.browser.webContents.enableDeviceEmulation(params);
+			this.browser.webContents.enableDeviceEmulation(params);
+		} catch (error) {
+			this._lastApplied = undefined;
+			return;
+		}
 
 		if (mobile !== last?.mobile) {
 			void this._applyTouchAndMedia();

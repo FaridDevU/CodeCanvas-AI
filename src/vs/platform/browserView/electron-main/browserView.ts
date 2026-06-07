@@ -33,6 +33,8 @@ enum NewPageLocation {
  * This class encapsulates all operations and events for a single browser view.
  */
 export class BrowserView extends Disposable {
+	private static readonly FAVICON_CACHE_MAX = 50;
+
 	private readonly _view: WebContentsView;
 	private readonly _faviconRequestCache = new Map<string, Promise<string>>();
 
@@ -228,6 +230,13 @@ export class BrowserView extends Disposable {
 			// try each url in order until one works
 			for (const url of favicons) {
 				if (!this._faviconRequestCache.has(url)) {
+					// Bound the cache so long sessions navigating many hosts don't leak.
+					if (this._faviconRequestCache.size >= BrowserView.FAVICON_CACHE_MAX) {
+						const oldest = this._faviconRequestCache.keys().next().value;
+						if (oldest !== undefined) {
+							this._faviconRequestCache.delete(oldest);
+						}
+					}
 					this._faviconRequestCache.set(url, (async () => {
 						if (url.startsWith('data:image/')) {
 							return url;
@@ -542,9 +551,20 @@ export class BrowserView extends Disposable {
 		if (this._currentWindow?.win?.id !== bounds.windowId) {
 			const newWindow = this._windowById(bounds.windowId);
 			if (newWindow) {
-				this._currentWindow?.win?.contentView.removeChildView(this._view);
-				this._currentWindow = newWindow;
-				newWindow.win?.contentView.addChildView(this._view);
+				// The target window can be torn down between resolution and the
+				// native re-parent (especially auxiliary windows); guard the calls.
+				try {
+					const oldWin = this._currentWindow?.win;
+					if (oldWin && !oldWin.isDestroyed()) {
+						oldWin.contentView.removeChildView(this._view);
+					}
+					this._currentWindow = newWindow;
+					if (newWindow.win && !newWindow.win.isDestroyed()) {
+						newWindow.win.contentView.addChildView(this._view);
+					}
+				} catch (error) {
+					this.logService.error('Failed to re-parent browser view during layout.', error);
+				}
 			}
 		}
 
@@ -862,6 +882,8 @@ export class BrowserView extends Disposable {
 			return;
 		}
 		this._isDisposed = true;
+
+		this._faviconRequestCache.clear();
 
 		// Dispose debugger. This detaches debug sessions first.
 		this.debugger.dispose();

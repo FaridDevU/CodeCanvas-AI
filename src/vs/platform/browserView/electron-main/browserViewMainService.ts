@@ -353,6 +353,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 		if (!window) {
 			return;
 		}
+		// If the window is already gone, its close/destroy events will never fire
+		// again; clean up now instead of leaving a subscription that never resolves.
+		if (window.win?.isDestroyed()) {
+			if (this._perWindowTrustedRoots.delete(windowId)) {
+				this._recomputeTrustedFileRoots();
+			}
+			return;
+		}
 		const onWindowGone = Event.any(window.onDidClose, window.onDidDestroy);
 		this._windowCloseSubscriptions.set(windowId, Event.once(onWindowGone)(() => {
 			this._windowCloseSubscriptions.deleteAndDispose(windowId);
@@ -569,12 +577,21 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 
 		menu.append(new MenuItem({ type: 'separator' }));
 		if (inspectTarget) {
+			let addToChatPromise: Promise<void> | undefined;
 			menu.append(new MenuItem({
 				label: localize('browser.contextMenu.addElementToChat', 'Add Element to Chat'),
-				click: () => inspectTarget.addToChat()
+				click: () => { addToChatPromise = inspectTarget.addToChat(); }
 			}));
 			void inspectTarget.highlight().catch(() => { });
-			menu.on('menu-will-close', () => inspectTarget.dispose());
+			menu.on('menu-will-close', () => {
+				// Wait for an in-flight addToChat before tearing down the target, so its
+				// pending CDP work doesn't run against a disposed session.
+				if (addToChatPromise) {
+					void addToChatPromise.catch(() => { }).finally(() => inspectTarget.dispose());
+				} else {
+					inspectTarget.dispose();
+				}
+			});
 		}
 		menu.append(new MenuItem({
 			label: localize('browser.contextMenu.inspect', 'Inspect'),
