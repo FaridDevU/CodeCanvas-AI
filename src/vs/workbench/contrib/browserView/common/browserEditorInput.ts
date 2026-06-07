@@ -173,7 +173,10 @@ export class BrowserEditorInput extends EditorInput {
 	override async resolve(): Promise<IBrowserViewModel> {
 		if (!this._model && !this._modelPromise) {
 			this._modelPromise = (async () => {
-				this._model = await this._resolveModel();
+				const resolved = await this._resolveModel();
+				// A model may have been injected (e.g. via the service) while we were
+				// resolving; prefer it so we never keep two models for one input.
+				this._model = this._model ?? resolved;
 				this._modelPromise = undefined;
 
 				return this._model;

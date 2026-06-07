@@ -220,6 +220,8 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 	 * on the latest editor/overlay/model state.
 	 */
 	private _refresh(): void {
+		const show = this._shouldShowPage();
+
 		// Placeholder screenshot: shown whenever there's a page to render
 		// (covered by the WCV when it's up, visible during hide/show swaps).
 		const placeholderActive = !!this._model?.url && !this._model?.error;
@@ -232,7 +234,6 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 		if (!this._model) {
 			return;
 		}
-		const show = this._shouldShowPage();
 		if (show === this._model.visible) {
 			return;
 		}
@@ -244,9 +245,11 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 				this.tryFocus();
 			}
 		} else {
+			// Hide immediately (no deferred frame): the placeholder screenshot already
+			// masks the swap, and keeping the native WCV visible for a frame lets it
+			// eat the first click meant for the overlay sitting on top of it.
 			void this._doScreenshot();
-			// Defer the hide one frame so the latest screenshot has a chance to paint first.
-			this.editor.window.requestAnimationFrame(() => void this._model?.setVisible(false));
+			void this._model.setVisible(false);
 		}
 	}
 
@@ -255,13 +258,14 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 			return;
 		}
 		const overlays = this._overlayManager.getOverlappingOverlays(this._container);
-		const obscured = overlays.length > 0 || this._isCodeCanvasPreviewSelectorOpen();
+		const selectorOpen = this._isCodeCanvasPreviewSelectorOpen();
+		const obscured = overlays.length > 0 || selectorOpen;
 		const hasNotification = overlays.some(o => o.type === BrowserOverlayType.Notification);
 		this._overlayPauseEl.classList.toggle('show-message', hasNotification);
 		if (obscured !== this._overlayObscured) {
 			this._overlayObscured = obscured;
-			this._refresh();
 		}
+		this._refresh();
 	}
 
 	private _isCodeCanvasPreviewSelectorOpen(): boolean {
@@ -269,18 +273,27 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 	}
 
 	private async _doScreenshot(): Promise<void> {
-		if (!this._model) {
+		const model = this._model;
+		if (!model) {
 			return;
 		}
 		this._screenshotHandle.clear();
-		if (!this._model.visible) {
+		if (!model.visible) {
 			return;
 		}
 		try {
-			const screenshot = await this._model.captureScreenshot({ quality: 80 });
+			const screenshot = await model.captureScreenshot({ quality: 80 });
+			// The model may have been detached or hidden while the capture was in flight.
+			if (this._model !== model || !model.visible) {
+				return;
+			}
 			this._setBackgroundImage(screenshot);
 		} catch (error) {
 			this.logService.error('Failed to capture browser view screenshot', error);
+		}
+		// Don't re-arm the loop for a model that was detached or hidden meanwhile.
+		if (this._model !== model || !model.visible) {
+			return;
 		}
 		const handle = setTimeout(() => void this._doScreenshot(), 1000);
 		this._screenshotHandle.value = toDisposable(() => clearTimeout(handle));

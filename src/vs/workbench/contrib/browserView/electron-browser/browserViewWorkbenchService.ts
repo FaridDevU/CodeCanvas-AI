@@ -268,7 +268,10 @@ export class BrowserViewWorkbenchService extends Disposable implements IBrowserV
 		} else if (opts.parentViewId) {
 			targetGroup = this._findEditorGroupForView(opts.parentViewId);
 			if (targetGroup === undefined) {
-				return; // If the parent isn't open, don't open the child either
+				// Parent isn't open: don't open the child, and dispose the already-created
+				// view so its native WebContentsView doesn't leak without an editor.
+				view.dispose();
+				return;
 			}
 		}
 

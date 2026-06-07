@@ -310,6 +310,7 @@ export class BrowserViewModel extends Disposable implements IBrowserViewModel {
 	private _browserZoomIndex: number = browserZoomDefaultIndex;
 	private _isElementSelectionActive: boolean = false;
 	private _isAreaSelectionActive: boolean = false;
+	private _isDisposed: boolean = false;
 	private _device: IBrowserDeviceProfile | undefined;
 
 	readonly history = this._register(new BrowserHistoryStore());
@@ -791,7 +792,15 @@ export class BrowserViewModel extends Disposable implements IBrowserViewModel {
 				);
 			}
 
+			// The model can be disposed while the confirm dialog is open; don't start
+			// tracking a page whose view is already gone.
+			if (this._isDisposed) {
+				return false;
+			}
 			await this.playwrightService.startTrackingPage(this.id);
+			if (this._isDisposed) {
+				return false;
+			}
 			this._setSharedWithAgent(true);
 		} else {
 			await this.playwrightService.stopTrackingPage(this.id);
@@ -839,6 +848,7 @@ export class BrowserViewModel extends Disposable implements IBrowserViewModel {
 	}
 
 	override dispose(): void {
+		this._isDisposed = true;
 		this._onWillDispose.fire();
 
 		// Stop sharing with the agent before destroying the view so the

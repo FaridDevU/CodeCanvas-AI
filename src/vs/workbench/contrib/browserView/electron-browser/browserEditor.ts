@@ -565,9 +565,16 @@ export class BrowserEditor extends EditorPane {
 		this._hasErrorContext.set(!!model.error);
 
 		// When closing a tab, the model gets disposed before the editor input is cleared.
-		// So we make sure we don't keep a reference to the disposed model.
+		// So we make sure we don't keep a reference to the disposed model and we notify
+		// contributions so native WebContentsViews get torn down instead of going orphan.
 		this._inputDisposables.add(this._model.onWillDispose(() => {
+			if (this._model !== model) {
+				return;
+			}
 			this._model = undefined;
+			this._onDidChangeModel.fire({ model: undefined, isNew: false });
+			this._hasUrlContext.reset();
+			this._hasErrorContext.reset();
 		}));
 
 		this._inputDisposables.add(this._model.onWillNavigate(() => {
