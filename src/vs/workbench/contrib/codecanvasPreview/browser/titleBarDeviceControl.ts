@@ -1,10 +1,11 @@
 /*---------------------------------------------------------------------------------------------
- *  CodeCanvas AI - Title bar device control
- *  Segmented desktop/tablet/mobile selector plus a viewport-width pill, rendered in the
- *  title bar center (MenuId.TitleBarAdjacentCenter). The selection is exposed through the
- *  `previewViewport` observable so the preview can later resize itself to match.
- *  Styles live in ./media/titleBarDeviceControl.css.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
+
+// Title bar device control: segmented desktop/tablet/mobile selector plus a viewport-width
+// pill, rendered in the title bar center. The selection is exposed through the
+// `previewViewport` observable so the preview can resize itself to match.
 
 import './media/titleBarDeviceControl.css';
 import * as dom from '../../../../base/browser/dom.js';
@@ -13,15 +14,14 @@ import { IAction } from '../../../../base/common/actions.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { ISettableObservable, observableValue } from '../../../../base/common/observable.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { localize } from '../../../../nls.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { IContextKeyService, RawContextKey, ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
-import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
-import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
@@ -138,10 +138,13 @@ registerAction2(class ShareAction extends Action2 {
 		});
 	}
 	override async run(accessor: ServicesAccessor): Promise<void> {
+		// Resolve services synchronously before any await; the accessor is only valid synchronously.
 		const folder = accessor.get(IWorkspaceContextService).getWorkspace().folders[0];
+		const clipboardService = accessor.get(IClipboardService);
+		const notificationService = accessor.get(INotificationService);
 		if (folder) {
-			await accessor.get(IClipboardService).writeText(folder.uri.fsPath);
-			accessor.get(INotificationService).info(localize('cc.shareCopied', "Project path copied to clipboard: {0}", folder.uri.fsPath));
+			await clipboardService.writeText(folder.uri.fsPath);
+			notificationService.info(localize('cc.shareCopied', "Project path copied to clipboard: {0}", folder.uri.fsPath));
 		}
 	}
 });
@@ -180,6 +183,7 @@ class LabeledTitleBarItem extends BaseActionViewItem {
 class DeviceControlViewItem extends BaseActionViewItem {
 	private viewportLabel: HTMLElement | undefined;
 	private readonly buttons = new Map<DeviceKind, HTMLElement>();
+	private pendingModelResolve: IDisposable | undefined;
 
 	constructor(
 		action: IAction,
@@ -252,10 +256,15 @@ class DeviceControlViewItem extends BaseActionViewItem {
 			const device: IBrowserDeviceProfile | undefined = preset.kind === 'desktop'
 				? undefined
 				: { width: preset.width, mobile: true };
+			// Drop a previous pending resolver so rapid switches before the model
+			// resolves don't stack callbacks that all fire and cascade devices.
+			this.pendingModelResolve?.dispose();
+			this.pendingModelResolve = undefined;
 			if (input.model) {
 				void input.model.setDevice(device);
 			} else {
-				input.onceModelResolves(model => {
+				this.pendingModelResolve = input.onceModelResolves(model => {
+					this.pendingModelResolve = undefined;
 					void model.setDevice(device);
 				});
 			}
