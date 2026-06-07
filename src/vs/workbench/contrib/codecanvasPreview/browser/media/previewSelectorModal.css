@@ -249,6 +249,12 @@
 	visibility: hidden;
 }
 
+.cc-ps-thumb-error {
+	color: #9aa3b8;
+	font-weight: 500;
+	letter-spacing: 0;
+}
+
 .cc-ps-live {
 	position: absolute;
 	top: 10px;

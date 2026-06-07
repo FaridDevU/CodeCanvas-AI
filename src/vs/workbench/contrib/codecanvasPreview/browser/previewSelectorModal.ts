@@ -24,13 +24,15 @@ import { CDPRequest, CDPResponse } from '../../../../platform/browserView/common
 import { ILogService } from '../../../../platform/log/common/log.js';
 
 const THUMBNAIL_LOAD_TIMEOUT = 5000;
-const THUMBNAIL_PAINT_TIMEOUT = 4000;
+const THUMBNAIL_PAINT_TIMEOUT = 600;
 const THUMBNAIL_SETTLE_DELAY = 550;
 const THUMBNAIL_NAVIGATION_DELAY = 120;
 const THUMBNAIL_CAPTURE_ATTEMPTS = 3;
 const THUMBNAIL_RETRY_ROUNDS = 4;
 const THUMBNAIL_RETRY_DELAY = 450;
 const COMPONENT_IGNORE_DIRS = new Set(['node_modules', 'out', 'dist', 'build', '.git', '.next', '.cache']);
+// Cap directory traversal so component lookups can't stall the UI on huge/deep trees.
+const COMPONENT_SCAN_LIMIT = 2000;
 
 // What the modal resolves with once the user picks a file (and optionally a section).
 export interface IPreviewSelectorResult {
@@ -219,9 +221,19 @@ export class PreviewSelectorModal extends Disposable {
 		this.renderCards();
 		this.renderEmptyContext();
 
-		// Dismiss on backdrop click or Escape.
+		// Dismiss on backdrop click or Escape. Cancel on CLICK (not MOUSE_DOWN) so
+		// the overlay isn't removed mid-gesture, which would let the trailing
+		// mouseup/click fall through to whatever sits below the modal.
 		this.modalDisposables.add(addDisposableListener(this.overlay, EventType.MOUSE_DOWN, e => {
 			if (e.target === this.overlay) {
+				e.preventDefault();
+				e.stopPropagation();
+			}
+		}));
+		this.modalDisposables.add(addDisposableListener(this.overlay, EventType.CLICK, e => {
+			if (e.target === this.overlay) {
+				e.preventDefault();
+				e.stopPropagation();
 				void this.cancel();
 			}
 		}));
@@ -478,7 +490,11 @@ export class PreviewSelectorModal extends Disposable {
 	private async findComponentCandidates(root: URI, normalizedId: string): Promise<URI[]> {
 		const matches: URI[] = [];
 		const queue: URI[] = [root];
+		let scanned = 0;
 		while (queue.length > 0) {
+			if (++scanned > COMPONENT_SCAN_LIMIT) {
+				break;
+			}
 			const current = queue.shift()!;
 			let stat;
 			try {
@@ -511,7 +527,11 @@ export class PreviewSelectorModal extends Disposable {
 			return undefined;
 		}
 		const queue: URI[] = [src];
+		let scanned = 0;
 		while (queue.length > 0) {
+			if (++scanned > COMPONENT_SCAN_LIMIT) {
+				break;
+			}
 			const current = queue.shift()!;
 			let stat;
 			try {
@@ -670,7 +690,7 @@ export class PreviewSelectorModal extends Disposable {
 		if (sectionPreview) {
 			this.applyThumbnail(bigImg, sectionPreview);
 		} else {
-			void this.captureSectionPreview(page, section, bigImg);
+			void this.captureSectionPreview(page, section, bigImg, bigLoading);
 		}
 
 		const actions = append(this.contextEl, $('.cc-ps-detail-actions'));
@@ -724,6 +744,9 @@ export class PreviewSelectorModal extends Disposable {
 	}
 
 	private applyThumbnail(element: HTMLElement, dataUrl: string): void {
+		if (!element.isConnected) {
+			return;
+		}
 		// The registered element is the image layer; fade it in and hide the loading screen.
 		element.style.backgroundImage = `url("${dataUrl}")`;
 		element.classList.add('cc-ps-img-ready');
@@ -834,7 +857,7 @@ export class PreviewSelectorModal extends Disposable {
 		return false;
 	}
 
-	private async captureSectionPreview(page: IPageModel, section: ISectionModel, element: HTMLElement): Promise<void> {
+	private async captureSectionPreview(page: IPageModel, section: ISectionModel, element: HTMLElement, loading: HTMLElement): Promise<void> {
 		if (!section.anchor.startsWith('#')) {
 			return;
 		}
@@ -849,23 +872,37 @@ export class PreviewSelectorModal extends Disposable {
 			this.activeCaptureInputs.add(input);
 			try {
 				const model = await input.resolve();
-				if (!await this.layoutCaptureOver(model, element)) {
+				const layoutResult = await this.layoutCaptureOver(model, element, false);
+				if (!layoutResult) {
 					return;
 				}
-				await this.navigateForCapture(model, this.toCaptureUrl(page.uri));
+				const captureUrl = this.toCaptureUrl(page.uri) + section.anchor;
+				await this.navigateForCapture(model, captureUrl);
 				if (this.disposedForOpen) {
 					return;
 				}
-				const dataUrl = await this.captureElementByIdWithCDP(input.id, section.anchor.slice(1));
+				const dataUrl = await this.captureVisiblePage(input.id, model, 70);
+				if (!dataUrl || dataUrl.length < 100) {
+					throw new Error('CDP returned empty screenshot');
+				}
 				this.sectionPreviewDataUrls.set(key, dataUrl);
 				this.applyThumbnail(element, dataUrl);
 			} catch (error) {
 				this.logService.warn('[PreviewSelectorModal] Failed to capture section preview.', error);
+				if (!this.disposedForOpen) {
+					this.showSectionPreviewError(loading);
+				}
 			} finally {
 				await this.disposeCaptureInput(input);
 				this.activeCaptureInputs.delete(input);
 			}
 		});
+	}
+
+	private showSectionPreviewError(loading: HTMLElement): void {
+		clearNode(loading);
+		loading.textContent = localize('cc.ps.sectionPreviewError', "No se pudo generar la vista previa");
+		loading.classList.add('cc-ps-thumb-error');
 	}
 
 	// Force-hide and dispose any capture views still alive, even if their task is stuck
@@ -937,10 +974,13 @@ export class PreviewSelectorModal extends Disposable {
 			}
 		}
 		if (!this.isSameCaptureUrl(model.url, url)) {
-			await Promise.race([
-				didNavigate,
-				timeout(THUMBNAIL_LOAD_TIMEOUT).then(() => { throw new Error(`Timed out navigating preview capture to ${url}`); })
+			const navigationWinner = await Promise.race([
+				didNavigate.then(() => 'didNavigate' as const),
+				timeout(THUMBNAIL_LOAD_TIMEOUT).then(() => 'timeout' as const)
 			]);
+			if (navigationWinner === 'timeout') {
+				throw new Error(`Timed out navigating preview capture to ${url}`);
+			}
 		}
 		await timeout(THUMBNAIL_NAVIGATION_DELAY);
 		await this.waitForPageIdle(model);
@@ -969,29 +1009,49 @@ export class PreviewSelectorModal extends Disposable {
 	// Position the (necessarily visible) capture view exactly over a target element so it
 	// renders the live page INSIDE that card/preview slot instead of as a floating box.
 	// A fully off-screen view does not paint (captures black), so it must overlap the slot.
-	private async layoutCaptureOver(model: IBrowserViewModel, element: HTMLElement): Promise<boolean> {
+	// `respectGalleryInterrupt` is true for gallery thumbnails (which must stop when
+	// the user leaves the gallery) and false for section captures, which run AFTER
+	// leaving the gallery and must not be blocked by galleryCaptureInterrupted.
+	private async layoutCaptureOver(model: IBrowserViewModel, element: HTMLElement, respectGalleryInterrupt = true): Promise<boolean> {
 		const host = this.layoutService.activeContainer.getBoundingClientRect();
 		const rect = element.getBoundingClientRect();
-		if (rect.width < 2 || rect.height < 2) {
+		const interrupted = respectGalleryInterrupt && this.galleryCaptureInterrupted;
+		if (this.disposedForOpen || interrupted) {
 			return false;
 		}
-		await model.layout({
-			windowId: mainWindow.vscodeWindowId,
+		if (rect.width < 2 || rect.height < 2) {
+			this.logService.warn('[PreviewSelectorModal] Capture target has empty bounds.');
+			throw new Error('Preview capture target has empty bounds.');
+		}
+		const bounds = {
 			x: Math.round(rect.left - host.left),
 			y: Math.round(rect.top - host.top),
 			width: Math.max(1, Math.round(rect.width)),
-			height: Math.max(1, Math.round(rect.height)),
+			height: Math.max(1, Math.round(rect.height))
+		};
+		await model.layout({
+			windowId: mainWindow.vscodeWindowId,
+			x: bounds.x,
+			y: bounds.y,
+			width: bounds.width,
+			height: bounds.height,
 			zoomFactor: 1,
 			cornerRadius: 0
 		});
 		await model.setVisible(true);
+		// The modal may have closed while we were laying out/showing; if so, hide
+		// the native capture surface again so it doesn't linger over the UI.
+		if (this.disposedForOpen || (respectGalleryInterrupt && this.galleryCaptureInterrupted)) {
+			await model.setVisible(false).catch(() => { });
+			return false;
+		}
 		return true;
 	}
 
 	private async captureVisiblePage(browserId: string, model: IBrowserViewModel, quality: number): Promise<string> {
 		try {
 			const screenshot = await Promise.race([
-				model.captureScreenshot({ format: 'jpeg', quality, awaitNextPaint: true }),
+				model.captureScreenshot({ format: 'jpeg', quality }),
 				timeout(THUMBNAIL_PAINT_TIMEOUT).then(() => { throw new Error('Thumbnail paint capture timed out.'); })
 			]);
 			return `data:image/jpeg;base64,${encodeBase64(screenshot)}`;
@@ -1021,44 +1081,6 @@ export class PreviewSelectorModal extends Disposable {
 		});
 	}
 
-	private async captureElementByIdWithCDP(browserId: string, elementId: string): Promise<string> {
-		return this.withPageSession(browserId, async send => {
-			const expression = `
-				(() => {
-					const element = document.getElementById(${JSON.stringify(elementId)});
-					if (!element) { return undefined; }
-					element.scrollIntoView({ block: 'center', inline: 'nearest' });
-					const rect = element.getBoundingClientRect();
-					return {
-						x: rect.left + window.scrollX,
-						y: rect.top + window.scrollY,
-						width: rect.width,
-						height: rect.height
-					};
-				})()
-			`;
-			type EvaluateResult = { result?: { value?: { x: number; y: number; width: number; height: number } } };
-			const evaluated = await send<EvaluateResult>('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-			const rect = evaluated.result?.value;
-			if (!rect || rect.width <= 0 || rect.height <= 0) {
-				throw new Error('Element rect is empty.');
-			}
-			const captured = await send<{ data: string }>('Page.captureScreenshot', {
-				format: 'jpeg',
-				quality: 70,
-				captureBeyondViewport: true,
-				clip: {
-					x: Math.max(0, rect.x - 24),
-					y: Math.max(0, rect.y - 24),
-					width: Math.max(1, rect.width + 48),
-					height: Math.max(1, rect.height + 48),
-					scale: 1
-				}
-			});
-			return `data:image/jpeg;base64,${captured.data}`;
-		});
-	}
-
 	private async withPageSession<T>(browserId: string, run: (send: <V>(method: string, params?: unknown) => Promise<V>) => Promise<T>): Promise<T> {
 		const groupId = await this.browserViewCDPService.createSessionGroup(browserId);
 		let nextId = 1;
@@ -1067,19 +1089,30 @@ export class PreviewSelectorModal extends Disposable {
 			const onMessage = this.browserViewCDPService.onCDPMessage(groupId);
 			const sendRaw = async <V>(method: string, params?: unknown, targetSessionId?: string): Promise<V> => {
 				const id = nextId++;
-				const response = Event.toPromise(Event.filter(onMessage, (message): message is CDPResponse => {
-					return 'id' in message && message.id === id;
-				}));
-				const request: CDPRequest = { id, method, params, sessionId: targetSessionId };
-				await this.browserViewCDPService.sendCDPMessage(groupId, request);
-				const result = await Promise.race([
-					response,
-					timeout(THUMBNAIL_LOAD_TIMEOUT).then(() => { throw new Error(`CDP command timed out: ${method}`); })
-				]) as CDPResponse;
-				if (result.error) {
-					throw new Error(result.error.message);
+				// Manage the response listener explicitly so a timed-out command doesn't
+				// leave a dangling onCDPMessage listener behind.
+				const store = new DisposableStore();
+				try {
+					const response = new Promise<CDPResponse>(resolve => {
+						store.add(onMessage(message => {
+							if ((message as CDPResponse).id === id) {
+								resolve(message as CDPResponse);
+							}
+						}));
+					});
+					const request: CDPRequest = { id, method, params, sessionId: targetSessionId };
+					await this.browserViewCDPService.sendCDPMessage(groupId, request);
+					const result = await Promise.race([
+						response,
+						timeout(THUMBNAIL_LOAD_TIMEOUT).then(() => { throw new Error(`CDP command timed out: ${method}`); })
+					]) as CDPResponse;
+					if (result.error) {
+						throw new Error(result.error.message);
+					}
+					return result.result as V;
+				} finally {
+					store.dispose();
 				}
-				return result.result as V;
 			};
 
 			type TargetResult = { targetInfos?: readonly { targetId: string; type: string }[] };
@@ -1146,6 +1179,7 @@ export class PreviewSelectorModal extends Disposable {
 		this.closing = true;
 		this.disposedForOpen = true;
 		await this.stopCaptures();
+		this.overlay.ownerDocument.body.classList.remove('cc-ps-selector-open');
 		this.modalDisposables.clear();
 		this.resolveFn?.(result);
 		this.resolveFn = undefined;
@@ -1158,6 +1192,7 @@ export class PreviewSelectorModal extends Disposable {
 		this.closing = true;
 		this.disposedForOpen = true;
 		await this.stopCaptures();
+		this.overlay.ownerDocument.body.classList.remove('cc-ps-selector-open');
 		this.modalDisposables.clear();
 		this.resolveFn?.(undefined);
 		this.resolveFn = undefined;

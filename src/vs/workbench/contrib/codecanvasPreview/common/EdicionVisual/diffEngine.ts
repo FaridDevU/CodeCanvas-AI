@@ -68,10 +68,12 @@ function applyChangesToContent(content: string, selector: string, changes: reado
 	const newRule = `${selector} {\n${cssProps}\n}`;
 
 	const escapedSelector = escapeRegExp(selector);
-	const ruleRegex = new RegExp(`${escapedSelector}\\s*\\{[^}]*\\}`, 'gs');
+	// No global flag: test() must not advance lastIndex, and we only want to
+	// rewrite the first matching rule deterministically.
+	const ruleRegex = new RegExp(`${escapedSelector}\\s*\\{[^}]*\\}`, 's');
 
 	if (ruleRegex.test(content)) {
-		return content.replace(ruleRegex, newRule);
+		return content.replace(ruleRegex, () => newRule);
 	}
 	return content + '\n' + newRule + '\n';
 }

@@ -8,7 +8,7 @@ import { mainWindow } from '../../../../base/browser/window.js';
 import { timeout } from '../../../../base/common/async.js';
 import { Event } from '../../../../base/common/event.js';
 import { URI } from '../../../../base/common/uri.js';
-import { DisposableStore } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { CodeCanvasTitleBarContribution } from './titleBarDeviceControl.js';
 import { CodeCanvasStatusBarContribution } from './codecanvasStatusBar.js';
 import { observableValue, ISettableObservable } from '../../../../base/common/observable.js';
@@ -47,7 +47,13 @@ const PREVIEW_ID = 'codecanvas.preview';
 const STATUS_ID = 'status.codecanvasPreview';
 const PREVIEW_LOAD_TIMEOUT = 8000;
 const PREVIEW_SETTLE_DELAY = 250;
+const VISUAL_EDIT_SELECTOR_PREFIX = 'selector:';
 let previewSelectorOpen = false;
+// Tracks the listeners of an active "Inspect Element" run so repeated invocations
+// don't stack listeners on the model.
+let activeInspectListeners: DisposableStore | undefined;
+// Tracks the active visual-edit commit listener for the same reason.
+let activeVisualEditListeners: DisposableStore | undefined;
 
 const codecanvasPreviewIcon = registerIcon('codecanvas-preview-icon', Codicon.eye, localize('codecanvasPreviewIcon', 'View icon of the CodeCanvas Preview.'));
 
@@ -246,6 +252,20 @@ async function openBrowserPreview(services: ICodeCanvasPreviewServices, url: str
 	// Use the active group for the first preview; once code/editors exist, keep preview
 	// in a side column so it lives next to the code instead of replacing it.
 	await services.editorService.openEditor(input, { pinned: true }, targetGroup);
+	await closeDuplicatePreviewEditors(services, input, existingPreviewGroup);
+}
+
+async function closeDuplicatePreviewEditors(services: ICodeCanvasPreviewServices, input: ReturnType<ICodeCanvasPreviewServices['browserViewWorkbenchService']['getOrCreateLazy']>, preferredGroup = services.editorGroupsService.groups.find(group => group.contains(input))): Promise<void> {
+	const previewGroups = services.editorGroupsService.groups.filter(group => group.contains(input));
+	const keepGroup = preferredGroup && previewGroups.some(group => group.id === preferredGroup.id)
+		? preferredGroup
+		: previewGroups[0];
+	if (!keepGroup) {
+		return;
+	}
+	await Promise.all(previewGroups
+		.filter(group => group.id !== keepGroup.id)
+		.map(group => group.closeEditor(input, { preserveFocus: true }).catch(() => false)));
 }
 
 async function tryConnectToUrls(urls: string[]): Promise<string | null> {
@@ -295,9 +315,12 @@ function getCodeEditorGroup(services: ICodeCanvasPreviewServices) {
 	// Open code in a dedicated column (the leftmost group that is not the preview), so code
 	// and preview never share the same column.
 	const previewInput = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
-	const previewGroup = previewInput ? services.editorGroupsService.groups.find(group => group.contains(previewInput)) : undefined;
-	return services.editorGroupsService.groups.find(group => group.id !== previewGroup?.id)
-		?? services.editorGroupsService.groups[0];
+	const codeGroup = previewInput
+		? services.editorGroupsService.groups.find(group => !group.contains(previewInput))
+		: services.editorGroupsService.groups[0];
+	// If every visible group already contains that preview input, open beside it instead
+	// of placing source under a native preview surface from one of those groups.
+	return codeGroup ?? (previewInput ? SIDE_GROUP : services.editorGroupsService.groups[0]);
 }
 
 async function openSmartCodeTarget(services: ICodeCanvasPreviewServices, root: URI, resource: URI, anchor: string | undefined, componentFile: string | undefined): Promise<void> {
@@ -351,15 +374,7 @@ async function activateVisualEditForAnchor(services: ICodeCanvasPreviewServices,
 	const model = input.model ?? await input.resolve();
 	try {
 		await waitForPreviewIdle(model);
-		const trackedElementId = await Promise.race([
-			model.trackElementBySelector(anchor),
-			timeout(PREVIEW_LOAD_TIMEOUT).then(() => undefined)
-		]);
-		if (!trackedElementId) {
-			throw new Error(`No tracked element found for selector ${anchor}`);
-		}
-		await model.toggleVisualEdit(trackedElementId, true);
-		services.notificationService.info(localize('visualEdit.sectionActive', "Edita la seccion seleccionada en el preview. Presiona Escape para cancelar."));
+		await model.toggleVisualEdit(`${VISUAL_EDIT_SELECTOR_PREFIX}${anchor}`, true);
 	} catch {
 		services.notificationService.warn(localize('visualEdit.sectionFailed', "No se pudo activar la edicion visual para esta seccion."));
 	}
@@ -371,80 +386,97 @@ async function openPreviewSelector(services: ICodeCanvasPreviewServices, root: U
 		return;
 	}
 	previewSelectorOpen = true;
-	const modal = services.instantiationService.createInstance(PreviewSelectorModal);
-	const existingPreviewInput = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
-	let existingPreviewModel = existingPreviewInput?.model;
-	if (existingPreviewInput && !existingPreviewModel) {
-		try {
-			existingPreviewModel = await Promise.race([
-				existingPreviewInput.resolve(),
-				timeout(1000).then(() => undefined)
-			]);
-		} catch {
-			// The preview can be mid-dispose; in that case there is nothing to hide.
-		}
-	}
-	const restoreExistingPreview = existingPreviewModel?.visible === true;
-	let suppressingExistingPreview = false;
-	const hideExistingPreview = async () => {
-		if (suppressingExistingPreview) {
-			return;
-		}
-		if (!existingPreviewModel) {
-			return;
-		}
-		suppressingExistingPreview = true;
-		try {
-			await existingPreviewModel.layout({
-				windowId: mainWindow.vscodeWindowId,
-				x: -32000,
-				y: -32000,
-				width: 1,
-				height: 1,
-				zoomFactor: 1,
-				cornerRadius: 0
-			}).catch(() => { });
-			await existingPreviewModel.setVisible(false).catch(() => { });
-		} finally {
-			suppressingExistingPreview = false;
-		}
-	};
+	// Everything runs inside a try/finally so the reentrancy guard is always
+	// released, even if construction or model resolution throws synchronously.
+	let modal: PreviewSelectorModal | undefined;
 	let hideExistingPreviewHandle: number | undefined;
-	let result: Awaited<ReturnType<PreviewSelectorModal['open']>> = undefined;
-	if (existingPreviewModel) {
-		await hideExistingPreview();
-		hideExistingPreviewHandle = mainWindow.setInterval(() => void hideExistingPreview(), 16);
-	}
 	try {
-		result = await modal.open(pages, root);
-		if (hideExistingPreviewHandle) {
-			mainWindow.clearInterval(hideExistingPreviewHandle);
-			hideExistingPreviewHandle = undefined;
+		modal = services.instantiationService.createInstance(PreviewSelectorModal);
+		const existingPreviewInput = services.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
+		let existingPreviewModel = existingPreviewInput?.model;
+		if (existingPreviewInput && !existingPreviewModel) {
+			try {
+				existingPreviewModel = await Promise.race([
+					existingPreviewInput.resolve(),
+					timeout(1000).then(() => undefined)
+				]);
+			} catch {
+				// The preview can be mid-dispose; in that case there is nothing to hide.
+			}
 		}
-		if (!result) {
-			return;
+		const restoreExistingPreview = existingPreviewModel?.visible === true;
+		let suppressingExistingPreview = false;
+		const hideExistingPreview = async () => {
+			if (suppressingExistingPreview) {
+				return;
+			}
+			if (!existingPreviewModel) {
+				return;
+			}
+			suppressingExistingPreview = true;
+			try {
+				// Hide the existing preview while the selector is open. We intentionally
+				// do NOT move it off-screen: the cc-ps-selector-open guard in
+				// WebContentsViewRendererFeature keeps it from re-showing, and leaving
+				// the bounds intact means it renders correctly when reused for an
+				// action='preview'/'edit' result instead of staying parked off-screen.
+				await existingPreviewModel.setVisible(false).catch(() => { });
+			} finally {
+				suppressingExistingPreview = false;
+			}
+		};
+		let result: Awaited<ReturnType<PreviewSelectorModal['open']>> = undefined;
+		let restoredExistingPreview = false;
+		const restoreExistingPreviewInPlace = async () => {
+			if (!restoreExistingPreview || !existingPreviewModel || restoredExistingPreview) {
+				return;
+			}
+			if (existingPreviewInput) {
+				const group = services.editorGroupsService.groups.find(g => g.contains(existingPreviewInput));
+				await services.editorService.openEditor(existingPreviewInput, { pinned: true }, group ?? SIDE_GROUP).catch(() => { });
+				await closeDuplicatePreviewEditors(services, existingPreviewInput, group).catch(() => { });
+			}
+			await existingPreviewModel.setVisible(true).catch(() => { });
+			restoredExistingPreview = true;
+		};
+		if (existingPreviewModel) {
+			await hideExistingPreview();
+			hideExistingPreviewHandle = mainWindow.setInterval(() => void hideExistingPreview(), 16);
 		}
-		modal.dispose();
-		if (result.action === 'code') {
-			await openSmartCodeTarget(services, root, result.uri, result.anchor, result.componentFile);
-			return;
-		}
-		const url = result.uri.toString() + (result.anchor ?? '');
-		await openBrowserPreview(services, url, localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
-		if (result.action === 'edit') {
-			await activateVisualEditForAnchor(services, result.anchor);
+		try {
+			result = await modal.open(pages, root);
+			if (hideExistingPreviewHandle) {
+				mainWindow.clearInterval(hideExistingPreviewHandle);
+				hideExistingPreviewHandle = undefined;
+			}
+			if (!result) {
+				return;
+			}
+			modal.dispose();
+			if (result.action === 'code') {
+				await restoreExistingPreviewInPlace();
+				await openSmartCodeTarget(services, root, result.uri, result.anchor, result.componentFile);
+				return;
+			}
+			const url = result.uri.toString() + (result.anchor ?? '');
+			await openBrowserPreview(services, url, localize('htmlPreview.editorTitle', "CodeCanvas HTML Preview"));
+			if (result.action === 'edit') {
+				await activateVisualEditForAnchor(services, result.anchor);
+			}
+		} finally {
+			if (hideExistingPreviewHandle) {
+				mainWindow.clearInterval(hideExistingPreviewHandle);
+				hideExistingPreviewHandle = undefined;
+			}
+			if ((!result || result.action === 'code') && !restoredExistingPreview) {
+				await restoreExistingPreviewInPlace();
+			}
 		}
 	} finally {
 		if (hideExistingPreviewHandle) {
 			mainWindow.clearInterval(hideExistingPreviewHandle);
 		}
-		if ((!result || result.action === 'code') && restoreExistingPreview && existingPreviewModel) {
-			if (existingPreviewInput) {
-				await services.editorService.openEditor(existingPreviewInput, { pinned: true }, SIDE_GROUP).catch(() => { });
-			}
-			await existingPreviewModel.setVisible(true).catch(() => { });
-		}
-		modal.dispose();
+		modal?.dispose();
 		previewSelectorOpen = false;
 	}
 }
@@ -543,13 +575,22 @@ async function openWorkspacePreview(services: ICodeCanvasPreviewServices, _force
 
 			services.notificationService.info(localize('preview.waiting', "Starting dev server, waiting for {0}...", previewUrl));
 
+			const scheduledForRoot = root.toString();
 			setTimeout(async () => {
+				// Bail out if the workspace changed while we were waiting; otherwise
+				// we'd open a preview for a project that's no longer open.
+				if (getWorkspaceRoot(services.contextService)?.toString() !== scheduledForRoot) {
+					return;
+				}
 				try {
 					const controller = new AbortController();
 					const timeout = setTimeout(() => controller.abort(), 15000);
 					const response = await fetch(previewUrl, { signal: controller.signal });
 					clearTimeout(timeout);
 
+					if (getWorkspaceRoot(services.contextService)?.toString() !== scheduledForRoot) {
+						return;
+					}
 					if (response.ok || response.status < 500) {
 						await openBrowserPreview(services, previewUrl, localize('vitePreview.editorTitle', "CodeCanvas Dev Server Preview"));
 						services.notificationService.info(localize('preview.connected', "Connected to dev server at {0}", previewUrl));
@@ -578,6 +619,8 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 	private statusEntry: IStatusbarEntryAccessor | undefined;
 	private readonly disposables = new DisposableStore();
 	private readonly watcherDisposables = new DisposableStore();
+	private readonly modelDisposables = new DisposableStore();
+	private watchedModelId: string | undefined;
 	private reloadTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
@@ -604,12 +647,26 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 				this.statusEntry.dispose();
 				this.statusEntry = undefined;
 			}
+			this.modelDisposables.clear();
+			this.watchedModelId = undefined;
 			this.stopFileWatcher();
 			return;
 		}
 
 		const model = input.model;
 		if (model) {
+			if (this.watchedModelId !== model.id) {
+				this.modelDisposables.clear();
+				this.watchedModelId = model.id;
+				this.modelDisposables.add(model.onDidChangeLoadingState(() => this.updateStatus()));
+				this.modelDisposables.add(model.onDidNavigate(() => this.updateStatus()));
+				this.modelDisposables.add(model.onWillDispose(() => {
+					this.modelDisposables.clear();
+					this.watchedModelId = undefined;
+					this.updateStatus();
+				}));
+			}
+
 			const loading = model.loading;
 			const error = model.error;
 			const url = model.url;
@@ -627,6 +684,8 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 
 			if (!loading && !error) {
 				this.startFileWatcher();
+			} else {
+				this.stopFileWatcher();
 			}
 		}
 	}
@@ -688,15 +747,20 @@ class CodeCanvasPreviewStatusContribution implements IWorkbenchContribution {
 		}
 	}
 
+	private reloadInProgress = false;
+
 	private reloadPreview(): void {
+		if (this.reloadInProgress) { return; }
 		const input = this.browserViewWorkbenchService.getKnownBrowserViews().get(PREVIEW_ID);
 		if (!input) { return; }
 
+		this.reloadInProgress = true;
+		const done = () => { this.reloadInProgress = false; };
 		const model = input.model ?? input.resolve();
 		if (model instanceof Promise) {
-			model.then(m => m.reload(true)).catch(() => { });
+			model.then(m => m.reload(true)).then(done, done);
 		} else {
-			model.reload(true);
+			void Promise.resolve(model.reload(true)).then(done, done);
 		}
 	}
 
@@ -839,17 +903,33 @@ registerAction2(class InspectElementAction extends Action2 {
 		await model.toggleElementSelection(true);
 		notificationService.info(localize('inspector.active', "Click on any element in the preview to inspect it. Press Escape to stop."));
 
-		const listener = model.onDidSelectElement((data: IElementData) => {
-			currentElementData.set(data, undefined, undefined);
-		});
+		// Drop any listeners from a previous (still-active) inspection run.
+		activeInspectListeners?.dispose();
+		const store = new DisposableStore();
+		activeInspectListeners = store;
 
-		const activeListener = model.onDidChangeElementSelectionActive((active: boolean) => {
+		store.add(model.onDidSelectElement((data: IElementData) => {
+			currentElementData.set(data, undefined, undefined);
+		}));
+
+		store.add(model.onDidChangeElementSelectionActive((active: boolean) => {
 			if (!active) {
-				listener.dispose();
-				activeListener.dispose();
 				currentElementData.set(null, undefined, undefined);
+				if (activeInspectListeners === store) {
+					activeInspectListeners = undefined;
+				}
+				store.dispose();
 			}
-		});
+		}));
+
+		// If the model goes away without reporting inactive, clean up anyway.
+		store.add(model.onWillDispose(() => {
+			currentElementData.set(null, undefined, undefined);
+			if (activeInspectListeners === store) {
+				activeInspectListeners = undefined;
+			}
+			store.dispose();
+		}));
 	}
 });
 
@@ -1025,8 +1105,18 @@ registerAction2(class MoveResizeElementAction extends Action2 {
 		}
 
 		const model = input.model ?? await input.resolve();
-		const listener = model.onDidCommitVisualEdit(async visualDelta => {
-			listener.dispose();
+		// Drop any listener from a previous (uncommitted) visual-edit run.
+		activeVisualEditListeners?.dispose();
+		const store = new DisposableStore();
+		activeVisualEditListeners = store;
+		const clearStore = () => {
+			if (activeVisualEditListeners === store) {
+				activeVisualEditListeners = undefined;
+			}
+			store.dispose();
+		};
+		store.add(model.onDidCommitVisualEdit(async visualDelta => {
+			clearStore();
 			if (visualDelta.elementId !== elementData.elementId) {
 				return;
 			}
@@ -1044,7 +1134,8 @@ registerAction2(class MoveResizeElementAction extends Action2 {
 			promptDelta(delta, fileService, notificationService, contextService, () => {
 				void model.reload(true);
 			});
-		});
+		}));
+		store.add(model.onWillDispose(() => clearStore()));
 		await model.toggleVisualEdit(elementData.elementId, true);
 		notificationService.info(localize('visualEdit.active', "Drag the element to move it, or drag the corner handle to resize it. Press Escape to cancel."));
 	}
@@ -1211,10 +1302,13 @@ class CodeCanvasWebProjectContribution extends DisposableStore implements IWorkb
 			if (this.redetectTimeout) { clearTimeout(this.redetectTimeout); }
 			this.redetectTimeout = setTimeout(() => update(), 500);
 		}));
+
+		// Make sure a pending re-detect timer never fires after disposal.
+		this.add({ dispose: () => { if (this.redetectTimeout) { clearTimeout(this.redetectTimeout); this.redetectTimeout = undefined; } } });
 	}
 }
 
-class CodeCanvasPreviewButtonContribution implements IWorkbenchContribution {
+class CodeCanvasPreviewButtonContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'workbench.contrib.codecanvasPreviewButton';
 	private statusEntry: IStatusbarEntryAccessor | undefined;
 
@@ -1222,6 +1316,8 @@ class CodeCanvasPreviewButtonContribution implements IWorkbenchContribution {
 		@IStatusbarService statusbarService: IStatusbarService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 	) {
+		super();
+		this._register({ dispose: () => { this.statusEntry?.dispose(); this.statusEntry = undefined; } });
 		const update = () => {
 			const isWeb = contextKeyService.getContextKeyValue<boolean>('codecanvasIsWebProject');
 			if (isWeb) {
@@ -1241,11 +1337,11 @@ class CodeCanvasPreviewButtonContribution implements IWorkbenchContribution {
 		};
 
 		update();
-		contextKeyService.onDidChangeContext(e => {
+		this._register(contextKeyService.onDidChangeContext(e => {
 			if (e.affectsSome(new Set(['codecanvasIsWebProject']))) {
 				update();
 			}
-		});
+		}));
 	}
 }
 
