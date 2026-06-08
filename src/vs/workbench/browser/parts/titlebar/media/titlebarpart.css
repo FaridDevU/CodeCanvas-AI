@@ -418,14 +418,7 @@
 	overflow: visible;
 }
 
-/* CodeCanvas AI: command center is disabled; hide the plain window title so the device
-   control is the only centered element. */
-.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title {
-	display: none;
-}
-
-/* CodeCanvas AI: hide the chat title-bar button that appears when the command center is
-   off. The AI itself stays available in the side panel. */
+/* CodeCanvas AI: hide the chat title-bar button when the command center is off. */
 .monaco-workbench .part.titlebar .monaco-action-bar .action-item:has(.codicon-chat-sparkle),
 .monaco-workbench .part.titlebar .monaco-action-bar .action-item:has(.codicon-comment),
 .monaco-workbench .part.titlebar .monaco-action-bar .action-item:has(.codicon-comment-discussion) {
