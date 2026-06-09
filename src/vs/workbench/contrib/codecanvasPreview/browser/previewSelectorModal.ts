@@ -128,8 +128,10 @@ export class PreviewSelectorModal extends Disposable {
 	private closing = false;
 	private galleryCaptureInterrupted = false;
 	private readonly thumbnailEls = new Map<string, HTMLElement[]>();
-	private readonly sectionPreviewDataUrls = new Map<string, string>();
 	private captureQueue = Promise.resolve();
+	// Live, scrollable section preview (a real WebContentsView, not a static thumbnail).
+	private liveSectionInput: BrowserEditorInput | undefined;
+	private readonly liveSectionDisposables = this._register(new DisposableStore());
 	private readonly captureBrowserId = `codecanvas-preview-thumb-${Date.now()}`;
 	private readonly sectionCaptureBrowserId = `codecanvas-preview-section-${Date.now()}`;
 	private readonly activeCaptureInputs = new Set<BrowserEditorInput>();
@@ -151,7 +153,6 @@ export class PreviewSelectorModal extends Disposable {
 		this.disposedForOpen = false;
 		this.galleryCaptureInterrupted = false;
 		this.thumbnailEls.clear();
-		this.sectionPreviewDataUrls.clear();
 		return new Promise<IPreviewSelectorResult | undefined>(resolve => {
 			this.resolveFn = resolve;
 			this.render();
@@ -584,6 +585,7 @@ export class PreviewSelectorModal extends Disposable {
 
 	// Step 2: file selected -> show its sections / routes.
 	private renderSections(page: IPageModel): void {
+		void this.hideLiveSectionPreview();
 		clearNode(this.contextEl);
 
 		const head = append(this.contextEl, $('.cc-ps-ctx-head'));
@@ -683,15 +685,9 @@ export class PreviewSelectorModal extends Disposable {
 		}
 
 		const big = append(this.contextEl, $('.cc-ps-detail-preview'));
-		const bigImg = append(big, $('.cc-ps-thumb-img'));
 		const bigLoading = append(big, $('.cc-ps-thumb-loading'));
 		bigLoading.appendChild(createShinyText(localize('cc.ps.loadingSection', "Generando vista"), { speed: 2.2, color: '#9fb3d6', shineColor: '#ffffff' }));
-		const sectionPreview = this.sectionPreviewDataUrls.get(this.sectionPreviewKey(page, section));
-		if (sectionPreview) {
-			this.applyThumbnail(bigImg, sectionPreview);
-		} else {
-			void this.captureSectionPreview(page, section, bigImg, bigLoading);
-		}
+		void this.showLiveSectionPreview(page, section, big, bigLoading);
 
 		const actions = append(this.contextEl, $('.cc-ps-detail-actions'));
 		const addAction = (icon: ThemeIcon, label: string, primary: boolean, run: () => void) => {
@@ -751,10 +747,6 @@ export class PreviewSelectorModal extends Disposable {
 		element.style.backgroundImage = `url("${dataUrl}")`;
 		element.classList.add('cc-ps-img-ready');
 		element.parentElement?.classList.add('cc-ps-thumb-loaded');
-	}
-
-	private sectionPreviewKey(page: IPageModel, section: ISectionModel): string {
-		return `${page.uri.toString()}${section.anchor}`;
 	}
 
 	private enqueueCapture<T>(task: () => Promise<T>): Promise<T> {
@@ -857,46 +849,62 @@ export class PreviewSelectorModal extends Disposable {
 		return false;
 	}
 
-	private async captureSectionPreview(page: IPageModel, section: ISectionModel, element: HTMLElement, loading: HTMLElement): Promise<void> {
+	// Show a live, scrollable preview of the section inside the detail slot. Unlike the
+	// gallery thumbnails (static screenshots), this keeps a real WebContentsView alive over
+	// the slot so the user can scroll the page. Torn down when leaving the detail view.
+	private async showLiveSectionPreview(page: IPageModel, section: ISectionModel, element: HTMLElement, loading: HTMLElement): Promise<void> {
 		if (!section.anchor.startsWith('#')) {
 			return;
 		}
-		const key = this.sectionPreviewKey(page, section);
-		void this.enqueueCapture(async () => {
-			if (this.disposedForOpen) {
+		await this.hideLiveSectionPreview();
+		if (this.disposedForOpen) {
+			return;
+		}
+		const input = this.browserViewWorkbenchService.getOrCreateLazy(this.sectionCaptureBrowserId, {
+			title: localize('cc.ps.thumbBrowserTitle', "Capturas de previews")
+		});
+		this.liveSectionInput = input;
+		this.activeCaptureInputs.add(input);
+		try {
+			const model = await input.resolve();
+			if (this.liveSectionInput !== input || this.disposedForOpen) {
 				return;
 			}
-			const input = this.browserViewWorkbenchService.getOrCreateLazy(this.sectionCaptureBrowserId, {
-				title: localize('cc.ps.thumbBrowserTitle', "Capturas de previews")
-			});
-			this.activeCaptureInputs.add(input);
-			try {
-				const model = await input.resolve();
-				const layoutResult = await this.layoutCaptureOver(model, element, false);
-				if (!layoutResult) {
-					return;
-				}
-				const captureUrl = this.toCaptureUrl(page.uri) + section.anchor;
-				await this.navigateForCapture(model, captureUrl);
-				if (this.disposedForOpen) {
-					return;
-				}
-				const dataUrl = await this.captureVisiblePage(input.id, model, 70);
-				if (!dataUrl || dataUrl.length < 100) {
-					throw new Error('CDP returned empty screenshot');
-				}
-				this.sectionPreviewDataUrls.set(key, dataUrl);
-				this.applyThumbnail(element, dataUrl);
-			} catch (error) {
-				this.logService.warn('[PreviewSelectorModal] Failed to capture section preview.', error);
-				if (!this.disposedForOpen) {
-					this.showSectionPreviewError(loading);
-				}
-			} finally {
-				await this.disposeCaptureInput(input);
-				this.activeCaptureInputs.delete(input);
+			if (!await this.layoutCaptureOver(model, element, false)) {
+				return;
 			}
-		});
+			await this.navigateForCapture(model, this.toCaptureUrl(page.uri) + section.anchor);
+			if (this.liveSectionInput !== input || this.disposedForOpen) {
+				return;
+			}
+			// The live view is up; hide the placeholder so the page shows through.
+			loading.style.display = 'none';
+			// Keep the native view aligned with the slot if the panel scrolls or the window resizes.
+			const reflow = () => {
+				if (this.liveSectionInput === input) {
+					void this.layoutCaptureOver(model, element, false);
+				}
+			};
+			this.liveSectionDisposables.add(addDisposableListener(this.contextEl, EventType.SCROLL, reflow, true));
+			this.liveSectionDisposables.add(addDisposableListener(mainWindow, EventType.RESIZE, reflow));
+		} catch (error) {
+			this.logService.warn('[PreviewSelectorModal] Failed to show live section preview.', error);
+			if (!this.disposedForOpen) {
+				this.showSectionPreviewError(loading);
+			}
+			await this.hideLiveSectionPreview();
+		}
+	}
+
+	// Tear down the live section preview surface and its reflow listeners.
+	private async hideLiveSectionPreview(): Promise<void> {
+		this.liveSectionDisposables.clear();
+		const input = this.liveSectionInput;
+		this.liveSectionInput = undefined;
+		if (input) {
+			this.activeCaptureInputs.delete(input);
+			await this.disposeCaptureInput(input);
+		}
 	}
 
 	private showSectionPreviewError(loading: HTMLElement): void {
@@ -908,6 +916,8 @@ export class PreviewSelectorModal extends Disposable {
 	// Force-hide and dispose any capture views still alive, even if their task is stuck
 	// awaiting, so no native BrowserView lingers over the workbench after the modal closes.
 	private async stopCaptures(): Promise<void> {
+		this.liveSectionDisposables.clear();
+		this.liveSectionInput = undefined;
 		await Promise.all([...this.activeCaptureInputs].map(input => this.disposeCaptureInput(input)));
 		this.activeCaptureInputs.clear();
 
@@ -1153,6 +1163,7 @@ export class PreviewSelectorModal extends Disposable {
 	}
 
 	private backToFiles(): void {
+		void this.hideLiveSectionPreview();
 		this.selected = undefined;
 		this.overlay.classList.remove('cc-ps-has-context');
 		for (const c of this.gridEl.children) {
