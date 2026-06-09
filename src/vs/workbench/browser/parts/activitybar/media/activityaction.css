@@ -65,6 +65,13 @@
 	justify-content: center;
 }
 
+.monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-label.uri-icon {
+	font-size: var(--activity-bar-icon-size, 24px);
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+}
+
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item.active .action-label.codicon,
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item:focus .action-label.codicon,
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item:hover .action-label.codicon {
@@ -123,6 +130,69 @@
 .monaco-workbench.hc-light .activitybar.left > .content :not(.monaco-menu) > .monaco-action-bar .action-item:focus:before,
 .monaco-workbench.hc-light .activitybar.right > .content :not(.monaco-menu) > .monaco-action-bar .action-item:focus:before {
 	outline: none;
+}
+
+/* CodeCanvas AI: group activity bar icons into two bordered boxes (Code+Design, then Search..Extensions) via per-item borders + nth-of-type. */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item {
+	margin: 0 5px;
+	padding: 7px 0;
+	border-left: 1px solid rgba(99, 140, 242, 0.45);
+	border-right: 1px solid rgba(99, 140, 242, 0.45);
+	background-color: rgba(120, 150, 220, 0.04);
+	transition: background-color 0.18s ease;
+}
+
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item .action-label {
+	width: 100%;
+}
+
+/* Box 1: Explorer + Design */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(1) {
+	margin-top: 6px;
+	border-top: 1px solid rgba(99, 140, 242, 0.45);
+	border-top-left-radius: 14px;
+	border-top-right-radius: 14px;
+}
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(2) {
+	border-bottom: 1px solid rgba(99, 140, 242, 0.45);
+	border-bottom-left-radius: 14px;
+	border-bottom-right-radius: 14px;
+}
+
+/* Box 2: Search + Source Control + Run and Debug + Extensions (with a gap above it) */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(3) {
+	margin-top: 16px;
+	border-top: 1px solid rgba(99, 140, 242, 0.45);
+	border-top-left-radius: 14px;
+	border-top-right-radius: 14px;
+}
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(6) {
+	border-bottom: 1px solid rgba(99, 140, 242, 0.45);
+	border-bottom-left-radius: 14px;
+	border-bottom-right-radius: 14px;
+}
+
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:hover {
+	background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Active item: show selection as an inset rounded pill behind the icon instead of a full-width block that breaks the box fill. */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked .active-item-indicator {
+	z-index: 0;
+	top: 5px;
+	bottom: 5px;
+	left: 6px;
+	right: 6px;
+	width: auto;
+	height: auto;
+	border-radius: 12px;
+	background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Drop the default left-border active indicator in favor of the box highlight. */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked .active-item-indicator:before,
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:focus .active-item-indicator:before {
+	border-left: none;
 }
 
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .profile-badge,
@@ -250,9 +320,9 @@
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-label.codicon[data-cc-name]::after {
 	content: attr(data-cc-name);
 	display: block;
-	max-width: var(--activity-bar-width, 64px);
+	max-width: calc(var(--activity-bar-width, 64px) - 14px);
 	padding: 0 2px;
-	font-family: var(--monaco-font-family, sans-serif);
+	font-family: inherit;
 	font-size: 9px;
 	font-weight: 400;
 	line-height: 1;
