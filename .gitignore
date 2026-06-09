@@ -52,3 +52,13 @@ dist
 Instrucciones AI/
 PROYECTO_CodeCanvas_AI.md
 memoria/
+
+# CodeCanvas: notas de discusion de IA (no son parte del producto)
+/brief-*.md
+/onlook-etapa1-reporte.md
+/respuesta-*.md
+/segunda-respuesta-*.md
+/tercera-respuesta-*.md
+
+# CodeCanvas: bundle generado del editor Design (se construye desde design-editor-src)
+/resources/app/design-editor/
