@@ -1350,3 +1350,8 @@ registerWorkbenchContribution2(CodeCanvasTitleBarContribution.ID, CodeCanvasTitl
 registerWorkbenchContribution2(CodeCanvasStatusBarContribution.ID, CodeCanvasStatusBarContribution, WorkbenchPhase.BlockRestore);
 registerWorkbenchContribution2(CodeCanvasWebProjectContribution.ID, CodeCanvasWebProjectContribution, WorkbenchPhase.AfterRestored);
 registerWorkbenchContribution2(CodeCanvasPreviewButtonContribution.ID, CodeCanvasPreviewButtonContribution, WorkbenchPhase.AfterRestored);
+
+import './designView.js';
+// Design opens as a normal editor tab by default. Full-window mode is now opt-in: a button
+// inside the Design editor toggles it via the TOGGLE_DESIGN_FULL_WINDOW command.
+import './designFullWindowMode.js';
