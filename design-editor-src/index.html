@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en" class="dark" data-mode="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeCanvas Design Editor</title>
+  <script>
+    // Minimal Node globals shim: several vendored packages (is-subdir, etc.) were written
+    // for Node and read `process`/`global` at runtime. The editor runs in the browser.
+    window.global = window.global || window;
+    window.process = window.process || { platform: 'browser', env: {}, cwd: function () { return '/'; }, argv: [], nextTick: function (fn) { Promise.resolve().then(fn); } };
+  </script>
+  <script>
+    window.addEventListener('error', function (e) {
+      console.error('[WINERR]', e.message, (e.filename || '') + ':' + (e.lineno || ''), e.error && e.error.stack ? e.error.stack.split('\n').slice(0, 4).join(' | ') : '');
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason || {};
+      console.error('[REJECT]', r.message || r, r.stack ? r.stack.split('\n').slice(0, 4).join(' | ') : '');
+    });
+  </script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; background: #1e1e1e; }
+    #root { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
