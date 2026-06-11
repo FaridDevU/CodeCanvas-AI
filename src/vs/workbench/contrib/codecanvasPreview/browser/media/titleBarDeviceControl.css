@@ -1,5 +1,6 @@
 /*---------------------------------------------------------------------------------------------
- *  CodeCanvas AI - Title bar device control styles
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
 .cc-device-control-item {
@@ -203,4 +204,81 @@
 
 .cc-titlebar-branch-name {
 	opacity: 0.9;
+}
+
+/* User profile avatar (circular) */
+.cc-titlebar-avatar-item {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	-webkit-app-region: no-drag;
+}
+
+.cc-titlebar-avatar {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+	color: var(--vscode-icon-foreground, #cccccc);
+	cursor: pointer;
+	outline: none;
+	overflow: hidden;
+	border: 1px solid var(--vscode-commandCenter-border, rgba(255, 255, 255, 0.08));
+}
+
+.cc-titlebar-avatar:hover {
+	border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.3));
+}
+
+.cc-titlebar-avatar-icon .codicon {
+	font-size: 15px;
+}
+
+.cc-titlebar-avatar-img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: 50%;
+	display: block;
+}
+
+/* In-app profile photo viewer (opened from the account menu). */
+.cc-avatar-modal-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.6);
+	backdrop-filter: blur(2px);
+	cursor: zoom-out;
+}
+
+.cc-avatar-modal-circle {
+	width: 280px;
+	height: 280px;
+	border-radius: 50%;
+	overflow: hidden;
+	border: 3px solid rgba(255, 255, 255, 0.15);
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+	background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.cc-avatar-modal-circle img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.cc-avatar-modal-caption {
+	margin-top: 16px;
+	color: #fff;
+	font-size: 14px;
+	font-weight: 500;
 }

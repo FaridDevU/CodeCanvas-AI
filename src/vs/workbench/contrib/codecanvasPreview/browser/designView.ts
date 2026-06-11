@@ -3,7 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append } from '../../../../base/browser/dom.js';
+import './media/designView.css';
+import { $, append, clearNode } from '../../../../base/browser/dom.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { Extensions as ViewContainerExtensions, IViewContainersRegistry, IViewsRegistry, ViewContainerLocation, IViewDescriptorService } from '../../../common/views.js';
@@ -25,14 +26,39 @@ import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/edit
 import { EditorExtensions } from '../../../common/editor.js';
 import { registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
-import { DesignEditorInput } from './designEditorInput.js';
+import { EditorActivation } from '../../../../platform/editor/common/editor.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
+import { RunOnceScheduler } from '../../../../base/common/async.js';
+import { URI } from '../../../../base/common/uri.js';
+import { DesignEditorInput, designEditorInputTypeId } from './designEditorInput.js';
 import { DesignEditorPane } from './designEditorPane.js';
+import { DesignProjectAnalyzer, IGNORED_DIRS, type AnalyzedApp, type ProjectAnalysis } from './designProjectAnalyzer.js';
 
 const DESIGN_VIEW_CONTAINER_ID = 'workbench.view.codecanvasDesign';
 const DESIGN_VIEW_ID = 'codecanvas.design.placeholder';
 const OPEN_DESIGN_EDITOR_COMMAND_ID = 'workbench.action.openDesignEditor';
 
 const designIcon = registerIcon('codecanvas-design-icon', Codicon.symbolCustomColor, localize('codecanvasDesignIcon', 'View icon of the CodeCanvas Design view.'));
+
+// Un cambio de archivo solo invalida el analisis si es relevante (config o fuente web)
+// y no vive en carpetas de build/deps; si no, el output de un dev server entra en bucle.
+function isRelevantFileChange(resource: URI): boolean {
+	const segments = resource.path.split('/');
+	const basename = (segments.pop() || '').toLowerCase();
+	if (segments.some(seg => IGNORED_DIRS.has(seg))) {
+		return false;
+	}
+	return basename === 'package.json' ||
+		basename.startsWith('vite.config') ||
+		basename.startsWith('next.config') ||
+		basename.startsWith('astro.config') ||
+		basename.startsWith('tailwind.config') ||
+		basename.endsWith('.tsx') ||
+		basename.endsWith('.jsx') ||
+		basename.endsWith('.html') ||
+		basename.endsWith('.css');
+}
 
 // Register Design Editor Pane
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
@@ -59,14 +85,18 @@ registerAction2(class extends Action2 {
 	async run(accessor: ServicesAccessor) {
 		const editorService = accessor.get(IEditorService);
 		const instantiationService = accessor.get(IInstantiationService);
-		// Open the custom singleton editor input directly. Opening by { resource, override }
-		// requires a registered editor resolver (which this editor does not have) and fails
-		// with "The editor could not be opened due to an unexpected error".
 		await editorService.openEditor(instantiationService.createInstance(DesignEditorInput), { pinned: true });
 	}
 });
 
 class DesignViewPane extends ViewPane {
+	private opening = false;
+	private readonly analyzer: DesignProjectAnalyzer;
+	private container: HTMLElement | undefined;
+	// Crece en cada analisis; un resultado solo se renderiza si sigue siendo el ultimo.
+	private analysisVersion = 0;
+	private readonly refreshScheduler: RunOnceScheduler;
+
 	constructor(
 		options: IViewPaneOptions,
 		@IKeybindingService keybindingService: IKeybindingService,
@@ -80,51 +110,203 @@ class DesignViewPane extends ViewPane {
 		@IHoverService hoverService: IHoverService,
 		@IAccessibleViewInformationService accessibleViewInformationService: IAccessibleViewInformationService,
 		@IEditorService private readonly editorService: IEditorService,
+		@IWorkspaceContextService workspaceContextService: IWorkspaceContextService,
+		@IFileService fileService: IFileService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService, accessibleViewInformationService);
 
-		// Clicking the Design activity-bar icon should open the Design editor (the Onlook
-		// canvas) in the main area and get the placeholder sidebar column out of the way.
+		this.analyzer = this.instantiationService.createInstance(DesignProjectAnalyzer);
+
 		this._register(this.onDidChangeBodyVisibility(visible => {
 			if (visible) {
-				this.enterDesign();
+				// Si cambio el workspace o la cache es vieja, re-analizar.
+				if (this.analyzer.isStale()) {
+					this.analyzer.invalidate();
+				}
+				setTimeout(() => this.enterDesign(), 50);
+				this.runAnalysis();
+			}
+		}));
+
+		// Watcher: invalida cache cuando cambian archivos relevantes del proyecto.
+		// Con debounce para que un burst de guardados dispare un solo re-analisis.
+		this.refreshScheduler = this._register(new RunOnceScheduler(() => {
+			this.analyzer.invalidate();
+			if (this.isBodyVisible()) {
+				this.renderAnalyzing();
+				this.runAnalysis();
+			}
+		}, 500));
+
+		this._register(fileService.onDidFilesChange(e => {
+			const allChanges = [...e.rawAdded, ...e.rawUpdated, ...e.rawDeleted];
+			if (allChanges.some(isRelevantFileChange)) {
+				this.refreshScheduler.schedule();
 			}
 		}));
 	}
 
+	private isDesignActive(): boolean {
+		return this.editorService.activeEditor?.typeId === designEditorInputTypeId;
+	}
+
 	private async enterDesign(): Promise<void> {
-		// Open the custom singleton editor input directly (opening by { resource, override }
-		// needs a registered editor resolver we don't have and fails to open). Hiding the
-		// surrounding workbench chrome (sidebar/panel/tabs) is handled by
-		// DesignFullWindowModeContribution, which reacts to this editor becoming active.
-		await this.editorService.openEditor(this.instantiationService.createInstance(DesignEditorInput), { pinned: true });
+		if (this.opening || this.isDesignActive()) {
+			return;
+		}
+		this.opening = true;
+		try {
+			await this.editorService.openEditor(
+				this.instantiationService.createInstance(DesignEditorInput),
+				{ pinned: true, activation: EditorActivation.ACTIVATE }
+			);
+		} catch (err) {
+			console.error('[CodeCanvas] Failed to open Design editor:', err);
+		} finally {
+			this.opening = false;
+		}
 	}
 
 	override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
-		container.style.display = 'flex';
-		container.style.flexDirection = 'column';
-		container.style.alignItems = 'center';
-		container.style.justifyContent = 'center';
-		container.style.textAlign = 'center';
-		container.style.padding = '0 16px';
+		this.container = container;
+		container.classList.add('design-view-container');
 
-		const icon = append(container, $('.codicon.codicon-symbol-color'));
-		icon.style.fontSize = '40px';
-		icon.style.marginBottom = '12px';
-		icon.style.opacity = '0.7';
+		this.renderAnalyzing();
+		this.runAnalysis();
+	}
 
-		const title = append(container, $('h3'));
-		title.textContent = localize('cc.design.title', "Design");
-		title.style.margin = '0 0 6px 0';
-		title.style.fontWeight = '400';
+	private renderAnalyzing(): void {
+		if (!this.container) { return; }
+		clearNode(this.container);
+		const wrapper = append(this.container, $('.design-analysis.analyzing'));
 
-		const subtitle = append(container, $('p'));
-		// allow-any-unicode-next-line
-		subtitle.textContent = localize('cc.design.subtitle', "Tu espacio de diseño (en construcción).");
-		subtitle.style.margin = '0';
-		subtitle.style.fontSize = '12px';
-		subtitle.style.opacity = '0.6';
+		append(wrapper, $('.codicon.codicon-loading'));
+		const text = append(wrapper, $('p'));
+		text.textContent = localize('cc.design.analyzing', "Analizando proyecto...");
+	}
+
+	private async runAnalysis(): Promise<void> {
+		const version = ++this.analysisVersion;
+		try {
+			const analysis = await this.analyzer.analyze();
+			if (version !== this.analysisVersion) {
+				return; // un analisis mas nuevo ya esta en curso; no pisar su render
+			}
+			this.renderAnalysis(analysis);
+		} catch (err) {
+			if (version !== this.analysisVersion) {
+				return;
+			}
+			console.error('[CodeCanvas] Analysis failed:', err);
+			this.renderError();
+		}
+	}
+
+	private renderError(): void {
+		if (!this.container) { return; }
+		clearNode(this.container);
+		const wrapper = append(this.container, $('.design-analysis.error'));
+		const p = append(wrapper, $('p'));
+		p.textContent = localize('cc.design.error', "Error al analizar el proyecto.");
+		this.appendReanalyzeButton(wrapper);
+	}
+
+	private renderAnalysis(analysis: ProjectAnalysis): void {
+		if (!this.container) { return; }
+		clearNode(this.container);
+		const wrapper = append(this.container, $('.design-analysis'));
+
+		if (analysis.apps.length === 0) {
+			this.renderNoWorkspace(wrapper);
+			return;
+		}
+
+		for (const app of analysis.apps) {
+			this.renderAppCard(wrapper, app);
+		}
+
+		this.appendReanalyzeButton(wrapper);
+	}
+
+	private renderNoWorkspace(wrapper: HTMLElement): void {
+		const empty = append(wrapper, $('.design-empty'));
+		append(empty, $('.codicon.codicon-folder'));
+		const text = append(empty, $('p'));
+		text.textContent = localize('cc.design.noWorkspace', "Abre una carpeta en Code para analizar tus proyectos.");
+	}
+
+	private renderAppCard(wrapper: HTMLElement, app: AnalyzedApp): void {
+		const card = append(wrapper, $('.design-app-card'));
+
+		// Header: name + badge
+		const header = append(card, $('.design-app-header'));
+		const name = append(header, $('strong'));
+		name.textContent = app.name;
+		const badge = append(header, $('span.framework-badge'));
+		badge.textContent = app.framework;
+
+		// Dev info
+		const devInfo = append(card, $('.design-app-dev'));
+		devInfo.textContent = app.devCommand
+			? `${app.devCommand}${app.devPort ? ' :' + app.devPort : ''}`
+			: localize('cc.design.noDevScript', "Sin script de desarrollo");
+
+		// Stack tags
+		if (app.stack.length > 0) {
+			const stackRow = append(card, $('.design-app-stack'));
+			for (const tech of app.stack) {
+				append(stackRow, $('span')).textContent = tech;
+			}
+		}
+
+		// Editable status
+		const statusRow = append(card, $('.design-app-status'));
+		statusRow.classList.add(app.editable ? 'editable' : 'not-supported');
+
+		const statusIcon = append(statusRow, $('span'));
+		if (app.editable) {
+			statusIcon.className = 'codicon codicon-check';
+			append(statusRow, $('span.status-text')).textContent = localize('cc.design.editable', "Editable por Design");
+		} else {
+			statusIcon.className = 'codicon codicon-close';
+			append(statusRow, $('span.status-text')).textContent = localize('cc.design.notSupported', "No soportado");
+			if (app.reason) {
+				const reason = append(statusRow, $('span.reason'));
+				reason.textContent = `(${app.reason})`;
+			}
+		}
+
+		// Pages (collapsible)
+		if (app.pages.length > 0) {
+			const pagesHeader = append(card, $('.design-app-pages-header'));
+			const pagesIcon = append(pagesHeader, $('span.codicon.codicon-chevron-right'));
+			const pagesLabel = append(pagesHeader, $('span'));
+			pagesLabel.textContent = localize('cc.design.pages', "Paginas") + ` (${app.pages.length})`;
+
+			const pagesList = append(card, $('.design-app-pages-list'));
+			for (const page of app.pages) {
+				append(pagesList, $('.design-page-item')).textContent = `${page.name} -> ${page.path}`;
+			}
+
+			let expanded = false;
+			pagesHeader.addEventListener('click', () => {
+				expanded = !expanded;
+				pagesList.classList.toggle('expanded', expanded);
+				pagesIcon.className = expanded ? 'codicon codicon-chevron-down' : 'codicon codicon-chevron-right';
+			});
+		}
+	}
+
+	private appendReanalyzeButton(wrapper: HTMLElement): void {
+		const footer = append(wrapper, $('.design-footer'));
+		const btn = append(footer, $('button'));
+		btn.textContent = localize('cc.design.reanalyze', "Re-analizar");
+		btn.addEventListener('click', () => {
+			this.analyzer.invalidate();
+			this.renderAnalyzing();
+			this.runAnalysis();
+		});
 	}
 }
 

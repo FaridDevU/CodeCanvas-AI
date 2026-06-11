@@ -59,6 +59,8 @@ memoria/
 /respuesta-*.md
 /segunda-respuesta-*.md
 /tercera-respuesta-*.md
+/.cc-*.png
+/*-log.txt
 
 # CodeCanvas: bundle generado del editor Design (se construye desde design-editor-src)
 /resources/app/design-editor/

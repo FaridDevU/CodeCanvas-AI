@@ -159,14 +159,16 @@
 	border-bottom-right-radius: 14px;
 }
 
-/* Box 2: Search + Source Control + Run and Debug + Extensions (with a gap above it) */
+/* Box 2: Search + Source Control + Run and Debug + Extensions + cualquier icono nuevo
+(dinamico: desde el icono 3 hasta el ULTIMO .action-item real, usando nth-last-of-type
+para ignorar el overflow action de VS Code:) */
 .monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(3) {
 	margin-top: 16px;
 	border-top: 1px solid rgba(99, 140, 242, 0.45);
 	border-top-left-radius: 14px;
 	border-top-right-radius: 14px;
 }
-.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-of-type(6) {
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:nth-last-of-type(1) {
 	border-bottom: 1px solid rgba(99, 140, 242, 0.45);
 	border-bottom-left-radius: 14px;
 	border-bottom-right-radius: 14px;
@@ -176,20 +178,17 @@
 	background-color: rgba(255, 255, 255, 0.06);
 }
 
-/* Active item: show selection as an inset rounded pill behind the icon instead of a full-width block that breaks the box fill. */
-.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked .active-item-indicator {
-	z-index: 0;
-	top: 5px;
-	bottom: 5px;
-	left: 6px;
-	right: 6px;
-	width: auto;
-	height: auto;
-	border-radius: 12px;
-	background-color: rgba(255, 255, 255, 0.12);
+/* Active item: highlight the entire .action-item so the glow respects the box's
+border-radius. The .action-label has z-index:1 so icon+text stay above. */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked {
+	background-color: var(--vscode-activityBar-activeBackground, rgba(255, 255, 255, 0.12));
 }
 
 /* Drop the default left-border active indicator in favor of the box highlight. */
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked .active-item-indicator,
+.monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:focus .active-item-indicator {
+	background-color: transparent;
+}
 .monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item.checked .active-item-indicator:before,
 .monaco-workbench .activitybar > .content .composite-bar > .monaco-action-bar .action-item:focus .active-item-indicator:before {
 	border-left: none;

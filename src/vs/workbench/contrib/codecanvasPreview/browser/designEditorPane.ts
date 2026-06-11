@@ -3,22 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, addDisposableListener, Dimension } from '../../../../base/browser/dom.js';
-import { mainWindow } from '../../../../base/browser/window.js';
+import { $, append, Dimension } from '../../../../base/browser/dom.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { localize } from '../../../../nls.js';
 import { EditorPane } from '../../../browser/parts/editor/editorPane.js';
-import { IEditorOpenContext } from '../../../common/editor.js';
-import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
-import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
-import { CancellationToken } from '../../../../base/common/cancellation.js';
-import { IEditorOptions } from '../../../../platform/editor/common/editor.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
-import { TOGGLE_DESIGN_FULL_WINDOW_COMMAND_ID } from './designFullWindowMode.js';
+import { DesignEditorBridge } from './designBridge.js';
 
 export class DesignEditorPane extends EditorPane {
 
@@ -32,8 +26,7 @@ export class DesignEditorPane extends EditorPane {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
 		@IStorageService storageService: IStorageService,
-		@IInstantiationService instantiationService: IInstantiationService,
-		@ICommandService private readonly commandService: ICommandService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
 	) {
 		super(DesignEditorPane.ID, group, telemetryService, themeService, storageService);
 	}
@@ -59,20 +52,15 @@ export class DesignEditorPane extends EditorPane {
 
 		// Load the design editor bundle. The bundle lives at <appRoot>/resources/app/design-editor,
 		// which sits next to `out`, so we escape the file root with `vs/../../`.
-		const bundleUri = FileAccess.asBrowserUri('vs/../../resources/app/design-editor/index.html');
+		// Cache-bust so a reload always picks up a freshly built bundle (the iframe would
+		// otherwise serve a cached index.html and never request the new hashed assets).
+		const bundleUri = FileAccess.asBrowserUri('vs/../../resources/app/design-editor/index.html').with({ query: `v=${Date.now()}` });
 		(this.webviewElement as HTMLIFrameElement).src = bundleUri.toString(true);
 
-		// The full-window toggle button lives inside the iframe (Onlook top bar). It posts a
-		// message that we forward to the workbench command that hides/shows the chrome.
-		this._register(addDisposableListener(mainWindow, 'message', (e: MessageEvent) => {
-			if (e.data && e.data.type === 'codecanvas:toggle-design-fullscreen') {
-				this.commandService.executeCommand(TOGGLE_DESIGN_FULL_WINDOW_COMMAND_ID);
-			}
-		}));
-	}
-
-	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
-		await super.setInput(input, options, context, token);
+		// All iframe <-> workbench traffic (fullscreen toggle, click-to-source, file
+		// system, terminal/dev server) goes through the bridge, which validates that
+		// messages really come from the Design iframe and stay inside the workspace.
+		this._register(this.instantiationService.createInstance(DesignEditorBridge, this.webviewElement as HTMLIFrameElement));
 	}
 
 	override layout(dimension: Dimension): void {

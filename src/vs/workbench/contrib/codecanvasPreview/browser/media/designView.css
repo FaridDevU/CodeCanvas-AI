@@ -1,0 +1,196 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Design View sidebar styles */
+
+.design-view-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: auto;
+}
+
+.design-analysis {
+	display: flex;
+	flex-direction: column;
+	padding: 12px 0;
+	gap: 12px;
+}
+
+.design-analysis.analyzing,
+.design-analysis.error {
+	align-items: center;
+	justify-content: center;
+	padding: 24px 16px;
+	gap: 8px;
+}
+
+.design-analysis .codicon-loading {
+	font-size: 24px;
+	animation: spin 1s linear infinite;
+}
+
+.design-analysis p {
+	margin: 0;
+	font-size: 13px;
+	opacity: 0.8;
+}
+
+.design-analysis.error p {
+	color: var(--vscode-errorForeground);
+}
+
+.design-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 32px 16px;
+	gap: 12px;
+}
+
+.design-empty .codicon-folder {
+	font-size: 32px;
+	opacity: 0.5;
+}
+
+.design-empty p {
+	margin: 0;
+	font-size: 13px;
+	opacity: 0.7;
+	text-align: center;
+}
+
+.design-app-card {
+	border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+	border-radius: 6px;
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.design-app-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.design-app-header strong {
+	font-size: 13px;
+	word-break: break-word;
+}
+
+.design-app-header .framework-badge {
+	font-size: 10px;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background-color: var(--vscode-badge-background, #4d4d4d);
+	color: var(--vscode-badge-foreground, #ffffff);
+	white-space: nowrap;
+}
+
+.design-app-dev {
+	font-size: 12px;
+	opacity: 0.8;
+}
+
+.design-app-stack {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.design-app-stack span {
+	font-size: 10px;
+	padding: 1px 4px;
+	border-radius: 3px;
+	background-color: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.2));
+}
+
+.design-app-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	flex-wrap: wrap;
+}
+
+.design-app-status.editable .codicon-check {
+	color: var(--vscode-testing-iconPassed, #89d185);
+}
+
+.design-app-status.not-supported .codicon-close {
+	color: var(--vscode-disabledForeground, #808080);
+}
+
+.design-app-status.not-supported .status-text {
+	color: var(--vscode-disabledForeground, #808080);
+}
+
+.design-app-status .reason {
+	font-size: 11px;
+	opacity: 0.7;
+	word-break: break-word;
+}
+
+.design-app-pages-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 600;
+	margin-top: 4px;
+}
+
+.design-app-pages-header .codicon {
+	font-size: 12px;
+}
+
+.design-app-pages-list {
+	display: none;
+	flex-direction: column;
+	gap: 4px;
+	margin-left: 18px;
+	margin-top: 4px;
+}
+
+.design-app-pages-list.expanded {
+	display: flex;
+}
+
+.design-page-item {
+	font-size: 12px;
+	opacity: 0.85;
+	word-break: break-word;
+}
+
+.design-footer {
+	display: flex;
+	justify-content: center;
+	padding: 8px 0;
+}
+
+.design-footer button {
+	padding: 4px 12px;
+	border: none;
+	border-radius: 4px;
+	background-color: var(--vscode-button-secondaryBackground, #3c3c3c);
+	color: var(--vscode-button-secondaryForeground, #cccccc);
+	cursor: pointer;
+	font-size: 12px;
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+
+	to {
+		transform: rotate(360deg);
+	}
+}
