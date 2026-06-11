@@ -18,7 +18,7 @@ import {
 } from '@onlook/models/actions';
 import { StyleChangeType } from '@onlook/models/style';
 import { colors } from '@onlook/ui/tokens';
-import { canHaveBackgroundImage, createDomId, createOid, urlToRelativePath } from '@onlook/utility';
+import { canHaveBackgroundImage, createDomId, createOid, isVideoFile, urlToRelativePath } from '@onlook/utility';
 import type React from 'react';
 import type { EditorEngine } from '../engine';
 import type { FrameData } from '../frames';
@@ -254,12 +254,15 @@ export class InsertManager {
             return;
         }
 
-        if (targetElement.tagName.toLowerCase() === 'img') {
+        // Swapping the src of an existing <img> only makes sense for images. A video
+        // dropped on an <img> is inserted as a new <video> element instead.
+        const isVideo = isVideoFile(imageData.mimeType || imageData.fileName);
+        if (!isVideo && targetElement.tagName.toLowerCase() === 'img') {
             await this.updateImageSource(frame, targetElement, imageData);
             return;
         }
 
-        if (altKey && canHaveBackgroundImage(targetElement.tagName)) {
+        if (!isVideo && altKey && canHaveBackgroundImage(targetElement.tagName)) {
             const actionElement = await frame.view.getActionElement(targetElement.domId);
             if (actionElement) {
                 this.updateElementBackgroundAction(frame, actionElement, imageData, targetElement);
@@ -351,31 +354,55 @@ export class InsertManager {
         );
         const domId = createDomId();
         const oid = createOid();
+        const isVideo = isVideoFile(imageData.mimeType || imageData.fileName);
 
-        const imageElement: ActionElement = {
-            domId,
-            oid,
-            branchId: frame.frame.branchId,
-            tagName: 'img',
-            children: [],
-            attributes: {
-                [EditorAttributes.DATA_ONLOOK_ID]: oid,
-                [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
-                [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
-                src: `/${url}`,
-                alt: imageData.fileName,
-            },
-            styles: {
-                width: DefaultSettings.IMAGE_DIMENSION.width,
-                height: DefaultSettings.IMAGE_DIMENSION.height,
-            },
-            textContent: null,
+        const commonAttributes = {
+            [EditorAttributes.DATA_ONLOOK_ID]: oid,
+            [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
+            [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
+            src: `/${url}`,
         };
+
+        // Videos become a real <video controls> element; images stay <img>. Treating a
+        // video as an image would drop the controls and the correct media semantics.
+        const mediaElement: ActionElement = isVideo
+            ? {
+                domId,
+                oid,
+                branchId: frame.frame.branchId,
+                tagName: 'video',
+                children: [],
+                attributes: {
+                    ...commonAttributes,
+                    controls: '',
+                },
+                styles: {
+                    width: DefaultSettings.IMAGE_DIMENSION.width,
+                    height: DefaultSettings.IMAGE_DIMENSION.height,
+                },
+                textContent: null,
+            }
+            : {
+                domId,
+                oid,
+                branchId: frame.frame.branchId,
+                tagName: 'img',
+                children: [],
+                attributes: {
+                    ...commonAttributes,
+                    alt: imageData.fileName,
+                },
+                styles: {
+                    width: DefaultSettings.IMAGE_DIMENSION.width,
+                    height: DefaultSettings.IMAGE_DIMENSION.height,
+                },
+                textContent: null,
+            };
 
         const action: InsertElementAction = {
             type: 'insert-element',
             targets: [{ frameId: frame.frame.id, branchId: frame.frame.branchId, domId, oid }],
-            element: imageElement,
+            element: mediaElement,
             location,
             editText: false,
             pasteParams: null,

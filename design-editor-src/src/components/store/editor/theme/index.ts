@@ -93,7 +93,7 @@ export class ThemeManager {
                         processConfigObject(value, prefix ? `${prefix}-${key}` : key, key);
 
                         if (DEFAULT_COLOR_NAME in value) {
-                            const varName = extractVarName(value.DEFAULT as string);
+                            const varName = extractVarName((value as any).DEFAULT as string);
                             if (varName) {
                                 parsed[key] = {
                                     name: key,

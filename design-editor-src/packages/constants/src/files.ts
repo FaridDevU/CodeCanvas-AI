@@ -1,4 +1,3 @@
-const isDev = process.env.NODE_ENV === 'development';
 const BASE_EXCLUDED_DIRECTORIES = ['node_modules', 'dist', 'build', '.git', '.next'] as const;
 
 export const CUSTOM_OUTPUT_DIR = '.next-prod';
@@ -10,16 +9,17 @@ export const ONLOOK_PRELOAD_SCRIPT_FILE = 'onlook-preload-script.js';
 export const ONLOOK_DEV_PRELOAD_SCRIPT_SRC = `/${ONLOOK_PRELOAD_SCRIPT_FILE}`;
 // Path to write into sandbox
 export const ONLOOK_DEV_PRELOAD_SCRIPT_PATH = `public/${ONLOOK_PRELOAD_SCRIPT_FILE}`;
-// Fetch url to load from CDN
+// Old CDN url (kept only so the deprecated-src cleanup can remove it from layouts).
 const ONLOOK_PROD_PRELOAD_SCRIPT_SRC =
     'https://cdn.jsdelivr.net/gh/onlook-dev/onlook@d3887f2/apps/web/client/public/onlook-preload-script.js';
-// Officially exported src to load from local or CDN
-export const ONLOOK_PRELOAD_SCRIPT_SRC = isDev ? ONLOOK_DEV_PRELOAD_SCRIPT_SRC : ONLOOK_PROD_PRELOAD_SCRIPT_SRC;
+// CodeCanvas always copies the script into the user project's public/ folder, so the
+// injected <Script> tag always points at the local dev server. Never the CDN.
+export const ONLOOK_PRELOAD_SCRIPT_SRC = ONLOOK_DEV_PRELOAD_SCRIPT_SRC;
 
 export const DEPRECATED_PRELOAD_SCRIPT_SRCS = [
     'https://cdn.jsdelivr.net/gh/onlook-dev/onlook@main/apps/web/client/public/onlook-preload-script.js',
-    // Intentionally reversed to deprecate non-preferred (local in prod, CDN in dev) usage.
-    isDev ? ONLOOK_PROD_PRELOAD_SCRIPT_SRC : ONLOOK_DEV_PRELOAD_SCRIPT_SRC,
+    // Any CDN reference left in a layout gets replaced by the local script.
+    ONLOOK_PROD_PRELOAD_SCRIPT_SRC,
 ];
 
 export const DEFAULT_IMAGE_DIRECTORY = 'public';

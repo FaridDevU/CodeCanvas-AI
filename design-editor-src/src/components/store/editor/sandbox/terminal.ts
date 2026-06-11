@@ -154,11 +154,8 @@ export class CLISessionImpl implements CLISession {
             allowProposedApi: true,
             macOptionIsMeta: true,
             altClickMovesCursor: false,
-            windowsMode: false,
             scrollback: 1000,
             screenReaderMode: false,
-            fastScrollModifier: 'alt',
-            fastScrollSensitivity: 5,
         });
 
         // Override write method to handle Claude Code's redrawing patterns

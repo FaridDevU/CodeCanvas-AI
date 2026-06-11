@@ -90,24 +90,10 @@ export const HotkeysArea = ({ children }: { children: ReactNode }) => {
         }
     }, { preventDefault: true });
 
-    // AI
+    // Preview mode toggle
     useHotkeys(
-        Hotkey.ADD_AI_CHAT.command,
+        Hotkey.PREVIEW_MODE_TOGGLE.command,
         () => {
-            if (editorEngine.state.editorMode === EditorMode.PREVIEW) {
-                editorEngine.state.editorMode = EditorMode.DESIGN;
-            }
-            editorEngine.chat.focusChatInput();
-        }
-    );
-    useHotkeys(Hotkey.NEW_AI_CHAT.command, () => {
-        editorEngine.state.editorMode = EditorMode.DESIGN;
-        editorEngine.chat.conversation.startNewConversation();
-    });
-    useHotkeys(
-        Hotkey.CHAT_MODE_TOGGLE.command,
-        () => {
-            // Toggle between design and preview mode
             if (editorEngine.state.editorMode === EditorMode.PREVIEW) {
                 editorEngine.state.editorMode = EditorMode.DESIGN;
             } else {

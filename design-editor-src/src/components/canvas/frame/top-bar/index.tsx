@@ -5,8 +5,7 @@ import { Button } from '@onlook/ui/button';
 import { Icons } from '@onlook/ui/icons';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
-import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { HoverOnlyTooltip } from '../../../editor-bar/hover-tooltip';
 import { BranchDisplay } from './branch';
 import { createMouseMoveHandler } from './helpers';
@@ -18,43 +17,7 @@ export const TopBar = observer(
         const isSelected = editorEngine.frames.isSelected(frame.id);
         const topBarRef = useRef<HTMLDivElement>(null);
         const toolBarRef = useRef<HTMLDivElement>(null);
-        const [shouldShowExternalLink, setShouldShowExternalLink] = useState(true);
         const mouseDownRef = useRef<{ x: number; y: number; time: number } | null>(null);
-
-        useEffect(() => {
-            const calculateVisibility = () => {
-                if (!topBarRef.current || !toolBarRef.current || !isSelected) {
-                    setShouldShowExternalLink(false);
-                    return;
-                }
-
-                const topBarWidth = topBarRef.current.clientWidth;
-                const toolBarWidth = toolBarRef.current.clientWidth;
-                const scale = editorEngine.canvas.scale;
-
-                // Both toolbar and external link are scaled down by (1/scale)
-                // So their visual widths are: actualWidth / scale
-                const visualToolBarWidth = toolBarWidth / scale;
-                const visualExternalLinkWidth = 32 / scale; // Button is ~32px, scaled down
-                const padding = 10 / scale; // Some padding between elements, also scaled
-
-                // Calculate if there's enough space for both toolbar and external link
-                // Add extra buffer to hide the external link before it gets too cramped
-                const totalNeededWidth = visualToolBarWidth + visualExternalLinkWidth + padding;
-                const hasEnoughSpace = topBarWidth >= totalNeededWidth;
-
-                setShouldShowExternalLink(hasEnoughSpace);
-            };
-
-            // Calculate on mount and when dependencies change
-            calculateVisibility();
-
-            // Recalculate when the window resizes or canvas scale changes
-            const handleResize = () => calculateVisibility();
-            window.addEventListener('resize', handleResize);
-
-            return () => window.removeEventListener('resize', handleResize);
-        }, [isSelected, editorEngine.canvas.scale, frame.dimension.width]);
 
         const handleMouseDown = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
             // Ignore right clicks or other button presses
@@ -202,25 +165,6 @@ export const TopBar = observer(
                     <span className={cn("ml-1.25 mb-0.5", isSelected ? "text-teal-700" : "text-foreground-secondary/50")}>·</span>
                     <PageSelector frame={frame} />
                 </div>
-                <HoverOnlyTooltip content="Preview in new tab" side="top" hideArrow className="mb-0">
-                    <Link
-                        className={cn(
-                            'absolute right-1 top-1/2 -translate-y-1/2 transition-opacity duration-300',
-                        )}
-                        href={frame.url.replace(/\[([^\]]+)\]/g, 'temp-$1')} // Dynamic routes are not supported so we replace them with a temporary value
-                        target="_blank"
-                        style={{
-                            transform: `scale(${1 / editorEngine.canvas.scale})`,
-                            transformOrigin: 'right center',
-                            opacity: shouldShowExternalLink ? 1 : 0,
-                            pointerEvents: shouldShowExternalLink ? 'auto' : 'none',
-                        }}
-                    >
-                        <Button variant="ghost" size="icon" className="rounded-lg hover:!bg-transparent focus:!bg-transparent active:!bg-transparent">
-                            <Icons.ExternalLink />
-                        </Button>
-                    </Link>
-                </HoverOnlyTooltip>
             </div>
         );
     });

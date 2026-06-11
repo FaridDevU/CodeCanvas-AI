@@ -16,6 +16,8 @@ import { WebPreview, WebPreviewBody } from '@onlook/ui/ai-elements';
 import { cn } from '@onlook/ui/utils';
 
 import { useEditorEngine } from '@/components/store/editor';
+import { useInspectorProxy } from './use-inspector-proxy';
+import { DeviceFrame, deviceFrameRadius, deviceFrameTypeFor } from './device-frame';
 
 export type IFrameView = HTMLIFrameElement & {
     setZoomLevel: (level: number) => void;
@@ -83,6 +85,11 @@ export const FrameComponent = observer(
             const [penpalChild, setPenpalChild] = useState<PenpalChildMethods | null>(null);
             const isSelected = editorEngine.frames.isSelected(frame.id);
             const isActiveBranch = editorEngine.branches.activeBranch.id === frame.branchId;
+            const proxiedUrl = useInspectorProxy(frame.url);
+            const deviceFrameType = useMemo(
+                () => deviceFrameTypeFor(frame.dimension.width, frame.dimension.height),
+                [frame.dimension.width, frame.dimension.height],
+            );
 
             const setupPenpalConnection = () => {
                 try {
@@ -307,20 +314,25 @@ export const FrameComponent = observer(
             }, []);
 
             return (
-                <WebPreview>
+                <WebPreview className="relative isolate !rounded-none !border-0 !bg-transparent">
+                    {deviceFrameType && <DeviceFrame type={deviceFrameType} />}
                     <WebPreviewBody
                         ref={iframeRef}
                         id={frame.id}
                         className={cn(
-                            'outline outline-4 backdrop-blur-sm transition',
+                            'relative z-[1] outline outline-4 backdrop-blur-sm transition',
                             isActiveBranch && 'outline-teal-400',
                             isActiveBranch && !isSelected && 'outline-dashed',
                             !isActiveBranch && isInDragSelection && 'outline-teal-500',
                         )}
-                        src={frame.url}
+                        src={proxiedUrl || frame.url}
                         sandbox="allow-modals allow-forms allow-same-origin allow-scripts allow-popups allow-downloads"
                         allow="geolocation; microphone; camera; midi; encrypted-media"
-                        style={{ width: frame.dimension.width, height: frame.dimension.height }}
+                        style={{
+                            width: frame.dimension.width,
+                            height: frame.dimension.height,
+                            borderRadius: deviceFrameType ? deviceFrameRadius(deviceFrameType) : undefined,
+                        }}
                         onLoad={setupPenpalConnection}
                         {...props}
                     />

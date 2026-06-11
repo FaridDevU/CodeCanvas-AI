@@ -144,7 +144,7 @@ export const ImagesTab = observer(() => {
             <FolderList folders={folders} onFolderClick={handleFolderClick} />
 
             <ImageGrid
-                images={images}
+                images={images as any}
                 projectId={projectId}
                 branchId={branchId}
                 search={search}

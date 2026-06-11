@@ -12,7 +12,7 @@ import { SVPicker } from './SVPicker';
 
 const Input = tw(DraftableInput)`
   outline-0 w-full h-6 bg-background-onlook/70 rounded focus:ring-1 ring-inset ring-foreground-active text-foreground-primary placeholder:text-foreground-disabled text-center
-`;
+` as any;
 
 type SliderMode = 'hsl' | 'hsv' | 'rgb' | 'hex';
 

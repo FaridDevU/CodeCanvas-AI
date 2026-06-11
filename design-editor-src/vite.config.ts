@@ -54,7 +54,6 @@ export default defineConfig({
       { find: '@/trpc/react', replacement: path.resolve(__dirname, './src/stubs/trpc.ts') },
       { find: '@/env', replacement: path.resolve(__dirname, './src/stubs/env.ts') },
       { find: '@/utils/git', replacement: path.resolve(__dirname, './src/stubs/utils-git.ts') },
-      { find: '@/services/sync-engine/sync-engine', replacement: path.resolve(__dirname, './src/stubs/sync-engine.ts') },
       { find: '@/hooks/use-font-loader', replacement: path.resolve(__dirname, './src/stubs/font-loader.ts') },
       { find: '@/hooks/use-create-blank-project', replacement: path.resolve(__dirname, './src/stubs/hooks.ts') },
       { find: '@/hooks/use-projects', replacement: path.resolve(__dirname, './src/stubs/hooks.ts') },

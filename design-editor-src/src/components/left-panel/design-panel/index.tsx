@@ -5,7 +5,6 @@ import { Icons } from '@onlook/ui/icons';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
-import { BranchesTab } from './branches-tab';
 import { BrandTab } from './brand-tab';
 import { HelpButton } from './help-button';
 import { ImagesTab } from './image-tab';
@@ -40,11 +39,7 @@ const tabs: {
             icon: <Icons.Image className="w-5 h-5" />,
             label: transKeys.editor.panels.layers.tabs.images,
         },
-        {
-            value: LeftPanelTabValue.BRANCHES,
-            icon: <Icons.Branch className="w-5 h-5" />,
-            label: transKeys.editor.panels.layers.tabs.branches,
-        },
+        // Branches tab removed: the local Design editor works on a single local project.
     ];
 
 export const DesignPanel = observer(() => {
@@ -103,7 +98,7 @@ export const DesignPanel = observer(() => {
             onMouseLeave={handleMouseLeave}
         >
             {/* Left sidebar with tabs */}
-            <div className="w-20 flex flex-col items-center py-0.5 gap-2 bg-background-onlook/60 backdrop-blur-xl">
+            <div className="w-20 flex flex-col items-center py-0.5 gap-2 bg-black/40 backdrop-blur-xl">
                 {tabs.map((tab) => (
                     <button
                         key={tab.value}
@@ -138,7 +133,6 @@ export const DesignPanel = observer(() => {
                             {selectedTab === LeftPanelTabValue.BRAND && <BrandTab />}
                             {selectedTab === LeftPanelTabValue.PAGES && <PagesTab />}
                             {selectedTab === LeftPanelTabValue.IMAGES && <ImagesTab />}
-                            {selectedTab === LeftPanelTabValue.BRANCHES && <BranchesTab />}
                         </div>
                     </div>
 

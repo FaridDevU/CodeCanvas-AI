@@ -1,7 +1,6 @@
 'use client';
 
 import { EditorEngineProvider, useEditorEngine } from '@/components/store/editor';
-import { HostingProvider } from '@/components/store/hosting';
 import { EditorAttributes } from '@onlook/constants';
 import { TooltipProvider } from '@onlook/ui/tooltip';
 import { observer } from 'mobx-react-lite';
@@ -15,6 +14,8 @@ import { LeftPanel } from '@/components/left-panel';
 import { TopBar } from '@/components/top-bar';
 import { usePanelMeasurements } from '@/hooks/use-panel-measure';
 import { useStartProject } from '@/hooks/use-start-project';
+import { useInspectorBridge } from '@/hooks/use-inspector-bridge';
+import { ProjectPicker } from '@/components/project-picker';
 
 // Local project/branch bootstrap. Onlook fetched these from the cloud; locally we seed
 // a single in-memory project. The folder open in CodeCanvas drives the real files later.
@@ -39,7 +40,8 @@ const LOCAL_BRANCHES: any[] = [
 
 const EditorLayout = observer(() => {
 	const editorEngine = useEditorEngine();
-	const { isProjectReady, error } = useStartProject();
+	const { isProjectReady, needsProjectChoice, apps, chooseApp, error } = useStartProject();
+	useInspectorBridge();
 	const leftPanelRef = useRef<HTMLDivElement | null>(null);
 	const rightPanelRef = useRef<HTMLDivElement | null>(null);
 	const { toolbarLeft, toolbarRight, editorBarAvailableWidth } = usePanelMeasurements(
@@ -65,16 +67,26 @@ const EditorLayout = observer(() => {
 
 	if (error) {
 		return (
-			<div className="h-screen w-screen flex items-center justify-center text-white">
-				Error starting project: {error}
+			<div className="h-screen w-screen flex flex-col items-center justify-center gap-4 text-white px-8 text-center">
+				<p className="text-sm text-foreground-secondary max-w-md">Error al iniciar el proyecto: {error}</p>
+				<button
+					onClick={() => window.location.reload()}
+					className="rounded-md bg-teal-600 hover:bg-teal-500 text-white text-sm px-4 py-1.5 transition-colors"
+				>
+					Reintentar
+				</button>
 			</div>
 		);
+	}
+
+	if (needsProjectChoice) {
+		return <ProjectPicker apps={apps} onChoose={chooseApp} />;
 	}
 
 	if (!isProjectReady) {
 		return (
 			<div className="h-screen w-screen flex items-center justify-center text-white">
-				Loading project...
+				Cargando proyecto...
 			</div>
 		);
 	}
@@ -144,9 +156,9 @@ export const DesignApp = () => {
 		<ErrorBoundary>
 			<DndProvider backend={HTML5Backend}>
 				<EditorEngineProvider project={LOCAL_PROJECT} branches={LOCAL_BRANCHES}>
-					<HostingProvider>
-						<EditorLayout />
-					</HostingProvider>
+					{/* No cloud providers: Design is fully local. Onlook's HostingProvider
+					    (publish/deploy via tRPC) was removed; nothing here queries the cloud. */}
+					<EditorLayout />
 				</EditorEngineProvider>
 			</DndProvider>
 		</ErrorBoundary>

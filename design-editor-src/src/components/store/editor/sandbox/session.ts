@@ -1,5 +1,7 @@
 import { api } from '@/trpc/client';
-import { CodeProvider, createCodeProviderClient, type Provider } from '@onlook/code-provider';
+import { BridgeProvider } from '@/lib/bridge-provider';
+import { getActiveProjectRoot } from '@/lib/design-session';
+import { type Provider } from '@onlook/code-provider';
 import type { Branch } from '@onlook/models';
 import { makeAutoObservable } from 'mobx';
 import type { ErrorManager } from '../error';
@@ -19,55 +21,30 @@ export class SessionManager {
     }
 
     async start(sandboxId: string, userId?: string): Promise<void> {
-        const MAX_RETRIES = 3;
-        const RETRY_DELAY_MS = 2000;
-
         if (this.isConnecting || this.provider) {
             return;
         }
 
-        this.isConnecting = true;
-
-        const attemptConnection = async () => {
-            const provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
-                providerOptions: {
-                    codesandbox: {
-                        sandboxId,
-                        userId,
-                        initClient: true,
-                        getSession: async (sandboxId, userId) => {
-                            return api.sandbox.start.mutate({ sandboxId });
-                        },
-                    },
-                },
-            });
-
-            this.provider = provider;
-            await this.createTerminalSessions(provider);
-        };
-
-        let lastError: Error | null = null;
-
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                await attemptConnection();
-                this.isConnecting = false;
-                return;
-            } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-                console.error(`Failed to start sandbox session (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`, error);
-
-                this.provider = null;
-
-                if (attempt < MAX_RETRIES) {
-                    console.log(`Retrying sandbox connection in ${RETRY_DELAY_MS}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-                }
-            }
+        // Local-only: the provider works against the project the user picked in Design.
+        // Until a project is chosen (use-start-project sets it) there is nothing to connect.
+        const rootPath = getActiveProjectRoot();
+        if (!rootPath) {
+            return;
         }
 
-        this.isConnecting = false;
-        throw lastError;
+        this.isConnecting = true;
+        try {
+            const provider = new BridgeProvider({ rootPath });
+            await provider.initialize({});
+            this.provider = provider;
+            await this.createTerminalSessions(provider);
+        } catch (error) {
+            console.error('Failed to start local sandbox session:', error);
+            this.provider = null;
+            throw error;
+        } finally {
+            this.isConnecting = false;
+        }
     }
 
     async restartDevServer(): Promise<boolean> {

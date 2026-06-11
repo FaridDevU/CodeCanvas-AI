@@ -1,103 +1,28 @@
-// TODO: Remove Next.js dependency
+// Local-only project breadcrumb. Onlook's version queried the cloud (api.project,
+// api.subscription) and offered clone/recent-projects/download. Design is local, so this
+// is just the CodeCanvas brand + a Settings entry that drives the local settings state.
+
 import codecanvasLogo from '@/assets/codecanvas-logo.png';
-import { useEditorEngine } from '@/components/store/editor';
 import { useStateManager } from '@/components/store/state';
 import { transKeys } from '@/i18n/keys';
-import { api } from '@/trpc/react';
-import { ProductType } from '@onlook/stripe';
-import { Badge } from '@onlook/ui/badge';
 import { Button } from '@onlook/ui/button';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@onlook/ui/dropdown-menu';
 import { Icons } from '@onlook/ui/icons';
-import { toast } from '@onlook/ui/sonner';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
-import { redirect } from 'next/navigation';
-import { usePostHog } from 'posthog-js/react';
 import { useRef, useState } from 'react';
-import { CloneProjectDialog } from '../clone-project-dialog';
-import { NewProjectMenu } from './new-project-menu';
-import { RecentProjectsMenu } from './recent-projects';
 
 export const ProjectBreadcrumb = observer(() => {
-    const editorEngine = useEditorEngine();
     const stateManager = useStateManager();
-    const posthog = usePostHog();
-    const { data: project } = api.project.get.useQuery({ projectId: editorEngine.projectId });
-    const { data: subscription } = api.subscription.get.useQuery();
-    const isPro = subscription?.product.type === ProductType.PRO;
     const t = useTranslations();
-    const closeTimeoutRef = useRef<Timer | null>(null);
+    const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [isClosingProject, setIsClosingProject] = useState(false);
-    const [isDownloading, setIsDownloading] = useState(false);
-    const [showCloneDialog, setShowCloneDialog] = useState(false);
-
-    async function handleNavigateToProjects(_route?: 'create' | 'import') {
-        try {
-            setIsClosingProject(true);
-
-            editorEngine.screenshot.captureScreenshot();
-        } catch (error) {
-            console.error('Failed to take screenshots:', error);
-        } finally {
-            setTimeout(() => {
-                setIsClosingProject(false);
-                redirect('/projects');
-            }, 100);
-        }
-    }
-
-    async function handleDownloadCode() {
-        if (!project) {
-            console.error('No project found');
-            return;
-        }
-
-        const sandboxId = editorEngine.branches.activeBranch.sandbox.id
-        if (!sandboxId) {
-            console.error('No sandbox ID found');
-            return;
-        }
-
-        try {
-            setIsDownloading(true);
-
-            const result = await editorEngine.activeSandbox.downloadFiles(project.name);
-
-            if (result) {
-                window.open(result.downloadUrl, '_blank');
-
-                posthog.capture('download_project_code', {
-                    projectId: project.id,
-                    projectName: project.name,
-                });
-
-                toast.success(t(transKeys.projects.actions.downloadSuccess));
-            } else {
-                throw new Error('Failed to generate download URL');
-            }
-        } catch (error) {
-            console.error('Download failed:', error);
-            toast.error(t(transKeys.projects.actions.downloadError), {
-                description: error instanceof Error ? error.message : 'Unknown error',
-            });
-
-            posthog.capture('download_project_code_failed', {
-                projectId: project.id,
-                error: error instanceof Error ? error.message : 'Unknown error',
-            });
-        } finally {
-            setIsDownloading(false);
-        }
-    }
 
     return (
         <div className="mr-0 flex flex-row items-center text-small gap-2">
@@ -110,13 +35,10 @@ export const ProjectBreadcrumb = observer(() => {
                         <img
                             src={codecanvasLogo}
                             alt="CodeCanvas"
-                            className={cn(
-                                'w-7 h-7 hidden md:block object-contain',
-                                isClosingProject && 'animate-pulse',
-                            )}
+                            className={cn('w-7 h-7 hidden md:block object-contain')}
                         />
                         <span className="mx-0 max-w-[60px] md:max-w-[100px] lg:max-w-[200px] px-0 text-foreground-onlook text-small truncate cursor-pointer group-hover:text-foreground-active">
-                            {isClosingProject ? 'Stopping project...' : project?.name}
+                            Design
                         </span>
                     </Button>
                 </DropdownMenuTrigger>
@@ -135,35 +57,6 @@ export const ProjectBreadcrumb = observer(() => {
                     }}
                 >
                     <DropdownMenuItem
-                        onClick={() => handleNavigateToProjects()}
-                        className="cursor-pointer"
-                    >
-                        <div className="flex flex-row center items-center group">
-                            <Icons.Tokens className="mr-2" />
-                            {t(transKeys.projects.actions.goToAllProjects)}
-                        </div>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <RecentProjectsMenu />
-                    <DropdownMenuSeparator />
-                    <NewProjectMenu onShowCloneDialog={setShowCloneDialog} />
-                    <DropdownMenuItem
-                        onClick={handleDownloadCode}
-                        disabled={isDownloading || !isPro}
-                        className="cursor-pointer"
-                    >
-                        <div className="flex flex-row center items-center justify-between group w-full">
-                            <div className="flex flex-row center items-center">
-                                <Icons.Download className="mr-2" />
-                                {isDownloading
-                                    ? t(transKeys.projects.actions.downloadingCode)
-                                    : t(transKeys.projects.actions.downloadCode)}
-                            </div>
-                            <Badge variant="secondary" className="ml-2 text-xs bg-blue-400 text-white rounded-full p-0.5 px-1.5">PRO</Badge>
-                        </div>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => (stateManager.isSettingsModalOpen = true)}
                     >
@@ -174,12 +67,6 @@ export const ProjectBreadcrumb = observer(() => {
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-
-            <CloneProjectDialog
-                isOpen={showCloneDialog}
-                onClose={() => setShowCloneDialog(false)}
-                projectName={project?.name}
-            />
         </div>
     );
 });

@@ -13,6 +13,7 @@ import { Icons } from '@onlook/ui/icons';
 import { Kbd } from '@onlook/ui/kbd';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
+import { isWorkbenchChatAvailable, sendToWorkbenchChat } from '@/lib/workbench-chat';
 
 interface RightClickMenuProps {
     children: React.ReactNode;
@@ -31,27 +32,17 @@ interface MenuItem {
 export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
     const editorEngine = useEditorEngine();
     const ide = IDE.fromType(DEFAULT_IDE);
+    const chatAvailable = isWorkbenchChatAvailable();
 
-    const TOOL_ITEMS: MenuItem[] = [
-        {
-            label: 'Add to AI Chat',
-            action: () => {
-                editorEngine.chat.focusChatInput();
-            },
-            icon: <Icons.MagicWand className="mr-2 h-4 w-4" />,
-            hotkey: Hotkey.ADD_AI_CHAT,
-            disabled: !editorEngine.elements.selected.length,
-        },
-        {
-            label: 'New AI Chat',
-            action: () => {
-                editorEngine.chat.conversation.startNewConversation();
-                editorEngine.chat.focusChatInput();
-            },
-            icon: <Icons.MagicWand className="mr-2 h-4 w-4" />,
-            hotkey: Hotkey.NEW_AI_CHAT,
-        },
-    ];
+    // Hands the current selection/app context to the native workbench chat (Copilot).
+    // There is no chat inside Design; this only opens the real one with context.
+    const askCopilotItem: MenuItem = {
+        label: 'Preguntar a Copilot',
+        action: () => void sendToWorkbenchChat(editorEngine),
+        icon: <Icons.Sparkles className="mr-2 h-4 w-4" />,
+    };
+
+    const TOOL_ITEMS: MenuItem[] = [];
 
     const GROUP_ITEMS: MenuItem[] = [
         {
@@ -130,7 +121,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
 
     const getMenuItems = (): MenuItem[][] => {
         if (!editorEngine.elements.selected.length) {
-            return [WINDOW_ITEMS];
+            return chatAvailable ? [[askCopilotItem], WINDOW_ITEMS] : [WINDOW_ITEMS];
         }
 
         const element: DomElement | undefined = editorEngine.elements.selected[0];
@@ -138,6 +129,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         const root = element?.oid || null;
 
         const updatedToolItems = [
+            chatAvailable && askCopilotItem,
             instance !== null && {
                 label: 'View instance code',
                 action: () => instance && editorEngine.ide.openCodeBlock(instance),
@@ -154,7 +146,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
                 ),
             },
             ...TOOL_ITEMS,
-        ].filter((item): item is MenuItem => item !== false);
+        ].filter((item): item is MenuItem => !!item);
 
         return [updatedToolItems, GROUP_ITEMS, EDITING_ITEMS];
     };

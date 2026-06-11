@@ -1,5 +1,5 @@
 import type { Provider } from '@onlook/code-provider';
-import { NEXT_JS_FILE_EXTENSIONS, ONLOOK_DEV_PRELOAD_SCRIPT_PATH, ONLOOK_DEV_PRELOAD_SCRIPT_SRC } from '@onlook/constants';
+import { NEXT_JS_FILE_EXTENSIONS, ONLOOK_DEV_PRELOAD_SCRIPT_PATH, ONLOOK_PRELOAD_SCRIPT_FILE } from '@onlook/constants';
 import { RouterType, type RouterConfig } from '@onlook/models';
 import { getAstFromContent, getContentFromAst, injectPreloadScript } from '@onlook/parser';
 import { isRootLayoutFile, normalizePath } from '@onlook/utility';
@@ -13,7 +13,9 @@ export async function copyPreloadScriptToPublic(provider: Provider, routerConfig
             // Directory might already exist, ignore error
         }
 
-        const scriptResponse = await fetch(ONLOOK_DEV_PRELOAD_SCRIPT_SRC);
+        // Resolve relative to the design editor bundle (works under vscode-file://),
+        // not the page origin. The script is vendored in the bundle's public folder.
+        const scriptResponse = await fetch(new URL(ONLOOK_PRELOAD_SCRIPT_FILE, window.location.href));
         await provider.writeFile({
             args: {
                 path: ONLOOK_DEV_PRELOAD_SCRIPT_PATH,

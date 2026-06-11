@@ -1,44 +1,17 @@
 import { useEditorEngine } from '@/components/store/editor';
-import { api } from '@/trpc/react';
 import { EditorMode } from '@onlook/models';
 import { observer } from 'mobx-react-lite';
-import { useEffect, useRef, useState } from 'react';
-import { OverlayChatInput } from './chat';
+import { useEffect } from 'react';
 import { OverlayOpenCode } from './code';
-import { DEFAULT_INPUT_STATE } from './helpers';
 
 export const OverlayButtons = observer(() => {
     const editorEngine = useEditorEngine();
-    const { data: settings } = api.user.settings.get.useQuery();
-    const [inputState, setInputState] = useState(DEFAULT_INPUT_STATE);
-    const prevChatPositionRef = useRef<{ x: number; y: number } | null>(null);
 
     const selectedRect = editorEngine.overlay.state.clickRects[0] ?? null;
     const domId = editorEngine.elements.selected[0]?.domId;
 
     const isPreviewMode = editorEngine.state.editorMode === EditorMode.PREVIEW;
-    const shouldHideButton =
-        !selectedRect ||
-        isPreviewMode ||
-        editorEngine.chat.isStreaming ||
-        !settings?.chat?.showMiniChat;
-
-    useEffect(() => {
-        setInputState(DEFAULT_INPUT_STATE);
-    }, [domId]);
-
-    const chatPosition = {
-        x: domId
-            ? (document.getElementById(domId)?.getBoundingClientRect().left ?? 0)
-            : 0,
-        y: domId
-            ? (document.getElementById(domId)?.getBoundingClientRect().bottom ?? 0)
-            : 0,
-    };
-
-    useEffect(() => {
-        prevChatPositionRef.current = chatPosition;
-    }, [chatPosition.x, chatPosition.y]);
+    const shouldHideButton = !selectedRect || isPreviewMode;
 
     const animationClass =
         'origin-center opacity-0 -translate-y-2 transition-all duration-200';
@@ -61,11 +34,11 @@ export const OverlayButtons = observer(() => {
 
     const EDITOR_HEADER_HEIGHT = 86;
     const MARGIN = 8;
-    const CHAT_BUTTON_HEIGHT = 42;
+    const BUTTON_HEIGHT = 34;
 
     const containerStyle: React.CSSProperties = {
         position: 'fixed',
-        top: Math.max(EDITOR_HEADER_HEIGHT + MARGIN, selectedRect.top - (CHAT_BUTTON_HEIGHT + MARGIN)),
+        top: Math.max(EDITOR_HEADER_HEIGHT + MARGIN, selectedRect.top - (BUTTON_HEIGHT + MARGIN)),
         left: selectedRect.left + selectedRect.width / 2,
         transform: 'translate(-50%, 0)',
         transformOrigin: 'center center',
@@ -80,10 +53,7 @@ export const OverlayButtons = observer(() => {
             className={animationClass}
             data-element-id={domId}
         >
-            <div className="flex flex-row items-center gap-2">
-                <OverlayChatInput inputState={inputState} setInputState={setInputState} />
-                <OverlayOpenCode isInputting={inputState.isInputting} />
-            </div>
+            <OverlayOpenCode isInputting={false} />
         </div>
     );
 });

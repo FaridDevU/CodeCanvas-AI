@@ -25,7 +25,7 @@ export const ProgressWithInterval = ({
     maxValue = 100,
 }: ProgressWithIntervalProps) => {
     const [progress, setProgress] = useState(0);
-    const progressInterval = useRef<Timer | null>(null);
+    const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         if (progressInterval.current) {

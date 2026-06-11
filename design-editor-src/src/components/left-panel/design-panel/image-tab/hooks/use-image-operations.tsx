@@ -2,7 +2,7 @@ import type { EditorEngine } from '@/components/store/editor/engine';
 import type { CodeFileSystem } from '@onlook/file-system';
 import { useDirectory } from '@onlook/file-system/hooks';
 import { sanitizeFilename } from '@onlook/utility';
-import { isImageFile } from '@onlook/utility/src/file';
+import { isImageFile, isVideoFile } from '@onlook/utility/src/file';
 import path from 'path';
 import { useMemo, useState } from 'react';
 import { updateImageReferences } from '../utils/image-references';
@@ -20,10 +20,12 @@ export const useImageOperations = (projectId: string, branchId: string, activeFo
         return rootEntries.filter(entry => entry.isDirectory);
     }, [rootEntries]);
 
-    // Get images in the active folder
+    // Get media (images and videos) in the active folder
     const images = useMemo(() => {
         if (!activeFolderEntries) return [];
-        const imageEntries = activeFolderEntries.filter(entry => !entry.isDirectory && isImageFile(entry.name));
+        const imageEntries = activeFolderEntries.filter(
+            entry => !entry.isDirectory && (isImageFile(entry.name) || isVideoFile(entry.name)),
+        );
 
         return imageEntries;
     }, [activeFolderEntries]);
@@ -37,9 +39,9 @@ export const useImageOperations = (projectId: string, branchId: string, activeFo
             for (const file of Array.from(files)) {
                 const sanitizedName = sanitizeFilename(file.name);
 
-                // Check if it's an image file (using original name for validation)
-                if (!isImageFile(file.name)) {
-                    console.warn(`Skipping non-image file: ${file.name}`);
+                // Accept images and videos (using original name for validation)
+                if (!isImageFile(file.name) && !isVideoFile(file.name)) {
+                    console.warn(`Skipping non-media file: ${file.name}`);
                     continue;
                 }
 

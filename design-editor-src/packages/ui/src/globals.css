@@ -465,8 +465,8 @@
     --np-secondary-icon-background: #14b8a6; /* teal-500*/
     --np-secondary-icon-shape: #ccfbf1; /* teal 100*/
 
-    --background: 20 14.3% 4.1%; /* shadcn */
-    --background-onlook: 0 0% 10%; /* gray[900] */
+    --background: 0 0% 12%; /* CodeCanvas: editor #1e1e1e */
+    --background-onlook: 0 0% 12%; /* CodeCanvas: #1e1e1e */
     --background-brand: 171 100% 17%; /* teal[700] */
     --background-brand-secondary: 171 100% 27%; /* teal[500] */
     --background-primary: 0 0% 10%; /* gray[900] */
@@ -478,7 +478,7 @@
     --background-active: 0 0% 20%; /* gray[700] */
     --background-disabled: 0 0% 10%; /* gray[900] */
 
-    --foreground: 60 9.1% 97.8%; /* shadcn */
+    --foreground: 0 0% 83%; /* CodeCanvas: #d4d4d4 */
     --foreground-onlook: 0 0% 67%; /* gray[200] */
     --foreground-brand: 344 100% 66%; /* red[DEFAULT] */
     --foreground-primary: 0 0% 100%; /* gray[50] */
@@ -490,20 +490,20 @@
     --foreground-active: 0 0% 100%; /* gray[50] */
     --foreground-disabled: 0 0% 10%; /* gray[900] */
 
-    --primary: 60 9.1% 97.8%; /* shadcn */
-    --primary-foreground: 24 9.8% 10%; /* shadcn */
+    --primary: 0 0% 83%; /* CodeCanvas: neutral light */
+    --primary-foreground: 0 0% 12%; /* CodeCanvas */
 
-    --secondary: 12 6.5% 15.1%; /* shadcn */
-    --secondary-foreground: 60 9.1% 97.8%; /* shadcn */
+    --secondary: 0 0% 16%; /* CodeCanvas: panel */
+    --secondary-foreground: 0 0% 83%; /* CodeCanvas */
 
     --destructive: 345.35 100% 16.86%; /* red[900] */
     --destructive-foreground: 344.21 100% 96.27%; /* red[100] */
 
-    --card: 20 14.3% 4.1%; /* shadcn */
-    --card-foreground: 60 9.1% 97.8%; /* shadcn */
+    --card: 0 0% 12%; /* CodeCanvas */
+    --card-foreground: 0 0% 83%; /* CodeCanvas */
 
-    --popover: 20 14.3% 4.1%; /* shadcn */
-    --popover-foreground: 60 9.1% 97.8%; /* shadcn */
+    --popover: 0 0% 14%; /* CodeCanvas: slightly raised */
+    --popover-foreground: 0 0% 83%; /* CodeCanvas */
 
     --icon: 0 0% 57%; /* gray[300] */
     --icon-hover: 0 0% 100%; /* gray[50] */
@@ -514,14 +514,14 @@
     --border-active: 0 0% 47%; /* gray[400] */
     --border-hover: 0 0% 38%; /* gray[500] */
 
-    --muted: 12 6.5% 15.1%; /* shadcn */
-    --muted-foreground: 24 5.4% 63.9%; /* shadcn */
+    --muted: 0 0% 16%; /* CodeCanvas */
+    --muted-foreground: 0 0% 64%; /* CodeCanvas */
 
-    --accent: 12 6.5% 15.1%; /* shadcn */
-    --accent-foreground: 60 9.1% 97.8%; /* shadcn */
+    --accent: 0 0% 18%; /* CodeCanvas: hover/selected */
+    --accent-foreground: 0 0% 83%; /* CodeCanvas */
 
-    --input: 12 6.5% 15.1%; /* shadcn */
-    --ring: 24 5.7% 82.9%; /* shadcn */
+    --input: 0 0% 18%; /* CodeCanvas */
+    --ring: 223 85% 67%; /* CodeCanvas: brand blue #638cf2 */
     --sidebar: hsl(240 5.9% 10%);
     --sidebar-foreground: hsl(240 4.8% 95.9%);
     --sidebar-primary: hsl(224.3 76.3% 48%);

@@ -136,7 +136,7 @@ export const Versions = observer(() => {
                                     </AccordionTrigger>
                                     <AccordionContent>
                                         <div className="flex flex-col">
-                                            {dateCommits.map((commit, index) => (
+                                            {(dateCommits as any[]).map((commit, index) => (
                                                 <React.Fragment key={commit.oid}>
                                                     <VersionRow
                                                         commit={commit}
@@ -148,7 +148,7 @@ export const Versions = observer(() => {
                                                         autoRename={commit.oid === commitToRename}
                                                         onRename={() => setCommitToRename(null)}
                                                     />
-                                                    {index < dateCommits.length - 1 && (
+                                                    {index < (dateCommits as any[]).length - 1 && (
                                                         <Separator className="bg-border mx-6 w-[calc(100%-theme(spacing.12))]" />
                                                     )}
                                                 </React.Fragment>

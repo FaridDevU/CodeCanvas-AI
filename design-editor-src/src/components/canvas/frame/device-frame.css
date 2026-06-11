@@ -1,0 +1,104 @@
+/* Device frames for the Design canvas. Visuals adapted from lite-frames
+ * (https://github.com/Marvinified/lite-frames, MIT) and reworked from Stencil/shadow-DOM
+ * web components into a plain CSS decoration that wraps the preview iframe WITHOUT
+ * changing its logical size. The decoration is purely cosmetic: pointer-events are
+ * disabled so it never blocks the inspector, selection or resize handles. The bezel sits
+ * behind the iframe (z-index 0) and only the small overlays (notch/camera) sit above it. */
+
+.cc-device-frame {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.cc-device-frame__bezel {
+    position: absolute;
+    z-index: 0;
+    background: var(--cc-df-body, #0b0b0d);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+/* --- Phone (iPhone X style: uniform bezel + top notch) --- */
+.cc-device-frame--phone .cc-device-frame__bezel {
+    inset: -14px;
+    border-radius: 46px;
+}
+
+.cc-device-frame--phone .cc-device-frame__notch {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    max-width: 170px;
+    height: 22px;
+    background: var(--cc-df-body, #0b0b0d);
+    border-bottom-left-radius: 16px;
+    border-bottom-right-radius: 16px;
+}
+
+/* --- Tablet (iPad style: thin uniform bezel + front camera dot) --- */
+.cc-device-frame--tablet .cc-device-frame__bezel {
+    inset: -18px;
+    border-radius: 24px;
+}
+
+.cc-device-frame--tablet .cc-device-frame__camera {
+    position: absolute;
+    z-index: 2;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #0c3d79;
+}
+
+/* --- Laptop/Desktop (MacBook style: bezel + webcam + base bar) --- */
+.cc-device-frame--laptop .cc-device-frame__bezel {
+    inset: -14px;
+    border-radius: 12px;
+}
+
+.cc-device-frame--laptop .cc-device-frame__notch {
+    position: absolute;
+    z-index: 2;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #2a2a2a;
+}
+
+.cc-device-frame--laptop .cc-device-frame__base {
+    position: absolute;
+    z-index: 0;
+    bottom: -24px;
+    left: -8%;
+    width: 116%;
+    height: 12px;
+    background: linear-gradient(#c8c8cc, #8a8a8f);
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.32);
+}
+
+/* Hinge notch on the base bar */
+.cc-device-frame--laptop .cc-device-frame__base::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14%;
+    height: 5px;
+    background: #74747a;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
