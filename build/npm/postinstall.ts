@@ -349,6 +349,29 @@ async function main() {
 			}
 		}
 	}
+
+	// CodeCanvas: make the Windows native modules build out of the box. node-pty (conpty.node, the
+	// integrated terminal) and native-is-elevated (iselevated.node, admin check) ask MSVC for
+	// Spectre-mitigated libs; without them the build fails (MSB8040) and the .node files are never
+	// produced. We normalize each binding.gyp and rebuild only if the binaries are missing.
+	// Best-effort: this must NEVER fail the install — on failure we print the exact recovery
+	// command. No-op on non-Windows. Repo-owned logic lives outside node_modules
+	// (build/codecanvas/fix-node-pty.mjs); see build/codecanvas/TERMINAL_CONPTY.md.
+	if (process.platform === 'win32') {
+		try {
+			const { fixNativeModules } = await import('../codecanvas/fix-node-pty.mjs');
+			const result = fixNativeModules({ rebuild: 'if-missing', log: (m: string) => log('native', m) });
+			if (result.status === 'ok') {
+				log('native', 'Windows native modules (conpty, iselevated) ready.');
+			} else if (result.status !== 'skipped') {
+				console.warn(`\n[native] WARNING: a native module is not ready: ${result.message}`);
+				console.warn('[native] Fix it with:  npm run fix-terminal   (see build/codecanvas/TERMINAL_CONPTY.md)\n');
+			}
+		} catch (err) {
+			console.warn(`\n[native] WARNING: could not run the native-modules preflight: ${(err as Error).message}`);
+			console.warn('[native] Fix it with:  npm run fix-terminal   (see build/codecanvas/TERMINAL_CONPTY.md)\n');
+		}
+	}
 }
 
 main().catch(err => {
