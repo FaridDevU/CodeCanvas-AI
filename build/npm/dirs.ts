@@ -13,6 +13,7 @@ export const dirs = [
 	'build',
 	'build/rspack',
 	'build/vite',
+	'design-editor-src',
 	'extensions',
 	'extensions/configuration-editing',
 	'extensions/copilot',

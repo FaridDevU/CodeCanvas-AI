@@ -19,6 +19,23 @@ export const Overlay = observer(() => {
     const isSingleSelection = editorEngine.elements.selected.length === 1;
     const isTextEditing = editorEngine.text.isEditing;
 
+    // When the Moveable layer owns the selection (single, absolutely-positioned, design mode, no menu)
+    // it draws its OWN box + handles. Suppress the legacy click-rect outline for that element so the
+    // user doesn't see two overlapping handle systems on the same element.
+    // Must mirror MoveableSelectionLayer's activation gate exactly: only absolute img/video get the
+    // Moveable box, so only for those do we suppress the legacy click-rect. A non-media absolute
+    // element (or a corrupted hero/card) keeps its normal selection outline instead of vanishing.
+    const singleRectPosition = overlayState.clickRects[0]?.styles?.computed?.position;
+    const singleTag = editorEngine.elements.selected[0]?.tagName?.toLowerCase();
+    const isMovableMedia = singleTag === 'img' || singleTag === 'video';
+    const moveableOwnsSelection =
+        isSingleSelection &&
+        isMovableMedia &&
+        (singleRectPosition === 'absolute' || singleRectPosition === 'fixed') &&
+        editorEngine.state.editorMode === EditorMode.DESIGN &&
+        !isTextEditing &&
+        !editorEngine.state.rightClickMenuOpen;
+
     const clickRectsElements = useMemo(
         () =>
             overlayState.clickRects.map((rectState: ClickRectState) => (
@@ -54,7 +71,7 @@ export const Overlay = observer(() => {
             {overlayState.insertRect && (
                 <InsertRect rect={overlayState.insertRect} />
             )}
-            {!isTextEditing && clickRectsElements}
+            {!isTextEditing && !moveableOwnsSelection && clickRectsElements}
             {isTextEditing && overlayState.textEditor && (
                 <TextEditor />
             )}

@@ -1,4 +1,6 @@
+import { debugLog } from '@/lib/debug';
 import { useEditorEngine } from '@/components/store/editor';
+import { Icons } from '@onlook/ui/icons';
 import type { LayerNode } from '@onlook/models/element';
 import { observer } from 'mobx-react-lite';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -128,6 +130,25 @@ export const LayersTab = observer(() => {
         [editorEngine.ast.mappings],
     );
 
+    const layers = editorEngine.ast.mappings.filteredLayers;
+    const isEmpty = !layers || layers.length === 0;
+    debugLog('[CC-LAYERS] render', { count: layers?.length ?? 0, isEmpty, measuredHeight: height, measuredWidth: width });
+
+    if (isEmpty) {
+        // An empty tree used to render a blank 280px panel that just covered the canvas. Show a
+        // clear hint instead so it's obvious there's nothing to list (and why).
+        return (
+            <div
+                ref={ref}
+                className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-foreground-tertiary"
+            >
+                <Icons.Layers className="h-5 w-5 opacity-60" />
+                <p>No hay capas para mostrar todavía.</p>
+                <p className="opacity-70">Selecciona un elemento en el lienzo para verlo aquí.</p>
+            </div>
+        );
+    }
+
     return (
         <div
             ref={ref}
@@ -147,7 +168,7 @@ export const LayersTab = observer(() => {
                     padding={0}
                     rowHeight={24}
                     height={height ?? 300}
-                    width={width ?? 365}
+                    width={width ?? 232}
                     renderRow={(props: any) => <TreeRow {...props} />}
                     onMove={handleDragEnd}
                     disableDrop={disableDrop}

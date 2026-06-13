@@ -1,3 +1,4 @@
+import { debugLog, debugWarn } from '@/lib/debug';
 import type { DomElement, ElementPosition } from '@onlook/models';
 import type { MoveElementAction } from '@onlook/models/actions';
 import { makeAutoObservable } from 'mobx';
@@ -90,12 +91,8 @@ export class MoveManager {
             return;
         }
 
-        const positionType = el.styles?.computed?.position;
-        if (positionType === 'absolute') {
-            console.warn('Absolute mode dragging is disabled');
-            this.clear();
-            return;
-        }
+        // Absolute elements are dragged freely (left/top); flow elements are reordered by index.
+        // Both paths are handled in drag()/end(); nothing is disabled here.
 
         if (!frameData.view) {
             console.error('No frame view found');
@@ -104,9 +101,14 @@ export class MoveManager {
         }
 
         const originalIndex = await frameData.view.startDrag(el.domId);
+        debugLog('[CC-MOVE] prepareDrag startDrag()', {
+            domId: el.domId,
+            originalIndex,
+            position: el.styles?.computed?.position,
+        });
 
         if (originalIndex === null || originalIndex === -1) {
-            console.error('Element not found in frame');
+            console.error('[CC-MOVE] prepareDrag aborted: startDrag returned', originalIndex, '-> clearing drag state (element will NOT move)');
             this.clear();
             return;
         }
@@ -143,6 +145,12 @@ export class MoveManager {
         try {
             this.editorEngine.overlay.clearUI();
             const positionType = this.state.dragTarget.styles?.computed?.position;
+            debugLog('[CC-MOVE] drag()', {
+                domId: this.state.dragTarget.domId,
+                positionType,
+                dx, dy, x, y,
+                path: positionType === 'absolute' ? 'dragAbsolute' : 'drag(flow)',
+            });
 
             if (positionType === 'absolute') {
                 await frameData.view.dragAbsolute(
@@ -155,7 +163,7 @@ export class MoveManager {
                 await frameData.view.drag(this.state.dragTarget.domId, dx, dy, x, y);
             }
         } catch (error) {
-            console.error('Error during drag:', error);
+            console.error('[CC-MOVE] Error during drag:', error);
         }
     }
 
@@ -169,7 +177,7 @@ export class MoveManager {
         this.clear();
 
         if (savedState?.dragState !== DragState.IN_PROGRESS) {
-            console.warn('Drag was not in progress, ending early');
+            debugWarn('[CC-MOVE] end(): drag was not IN_PROGRESS (state:', savedState?.dragState, ') -> nothing persisted');
             await this.endAllDrag();
             return;
         }
@@ -188,6 +196,7 @@ export class MoveManager {
             const position = savedState.dragTarget.styles?.computed?.position;
             if (position === ('absolute' as const)) {
                 const res = await frameData.view.endDragAbsolute(targetDomId);
+                debugLog('[CC-MOVE] end() endDragAbsolute() ->', res, res ? '(persisting left/top via updateMultiple)' : '(NULL -> nothing persisted)');
 
                 if (res) {
                     const { left, top } = res;

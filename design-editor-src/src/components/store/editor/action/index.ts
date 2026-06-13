@@ -1,3 +1,4 @@
+import { debugLog } from '@/lib/debug';
 import type { DomElement, LayerNode } from '@onlook/models';
 import { EditorMode } from '@onlook/models';
 import {
@@ -114,6 +115,13 @@ export class ActionManager {
 
             // cloneDeep is used to avoid the issue of observable values can not pass through the webview
             const domEl = await frameData.view.updateStyle(target.domId, cloneDeep(change));
+            debugLog('[CC-LIVE] updateStyle target', {
+                domId: target.domId,
+                oid: target.oid,
+                updated: change.updated,
+                found: !!domEl,
+                resultRect: domEl?.rect,
+            });
             if (!domEl) {
                 console.error('Failed to update style');
                 continue;

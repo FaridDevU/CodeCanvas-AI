@@ -1,3 +1,4 @@
+import { debugLog } from '@/lib/debug';
 import { useEditorEngine } from '@/components/store/editor';
 import { EditorMode, InsertMode, type ImageContentData } from '@onlook/models';
 import { usePostHog } from 'posthog-js/react';
@@ -44,6 +45,13 @@ export const useImageDragDrop = (onUpload?: (files: FileList) => Promise<void>) 
 
     const onImageDragStart = useCallback(
         (e: React.DragEvent<HTMLDivElement>, image: ImageContentData) => {
+            debugLog('[CC-DROP] onImageDragStart payload', {
+                fileName: image.fileName,
+                hasContent: !!image.content,
+                contentLen: image.content?.length ?? 0,
+                originPath: image.originPath,
+                mimeType: image.mimeType,
+            });
             e.dataTransfer.setData(
                 'application/json',
                 JSON.stringify({
@@ -86,6 +94,10 @@ export const useImageDragDrop = (onUpload?: (files: FileList) => Promise<void>) 
             frame.view.style.pointerEvents = 'auto';
         }
         editorEngine.state.editorMode = EditorMode.DESIGN;
+        // Always clear insert mode on drag end, even when the drop happened outside the canvas or
+        // was cancelled (gesture.tsx only clears it on a successful in-canvas drop). Otherwise the
+        // editor stays stuck in "Insertar imagen" and later clicks misbehave.
+        editorEngine.state.insertMode = null;
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {

@@ -123,7 +123,9 @@ class DesignViewPane extends ViewPane {
 				if (this.analyzer.isStale()) {
 					this.analyzer.invalidate();
 				}
-				setTimeout(() => this.enterDesign(), 50);
+				// El sidebar NO debe forzar la apertura del editor de Design cada vez que se hace
+				// visible (era invasivo y podia provocar foco/loop raros). El usuario abre Design
+				// manualmente; aqui solo refrescamos el analisis.
 				this.runAnalysis();
 			}
 		}));
@@ -150,7 +152,10 @@ class DesignViewPane extends ViewPane {
 		return this.editorService.activeEditor?.typeId === designEditorInputTypeId;
 	}
 
-	private async enterDesign(): Promise<void> {
+	// Opens the Design editor. Kept available for manual/programmatic open (the sidebar no longer
+	// auto-opens on visibility). Non-private so it isn't flagged as unused now that the auto-open call
+	// was removed, and so a future command can drive it.
+	async enterDesign(): Promise<void> {
 		if (this.opening || this.isDesignActive()) {
 			return;
 		}

@@ -1,3 +1,4 @@
+import { debugLog } from '@/lib/debug';
 import { useEditorEngine } from '@/components/store/editor';
 import type { FrameData } from '@/components/store/editor/frames';
 import { getRelativeMousePositionToFrameView } from '@/components/store/editor/overlay/utils';
@@ -64,8 +65,16 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
                             editorEngine.frames.select([frame], e.shiftKey);
                             return;
                         }
-                        // Ignore right-clicks
+                        // Right-click: select the element under the cursor so the context menu
+                        // (and "Preguntar a Copilot") act on what was actually clicked. Keep an
+                        // existing multi-selection if the clicked element is already part of it.
                         if (e.button == 2) {
+                            const alreadySelected = editorEngine.elements.selected.some(
+                                (sel) => sel.domId === el.domId,
+                            );
+                            if (!alreadySelected) {
+                                editorEngine.elements.click([el]);
+                            }
                             break;
                         }
                         if (editorEngine.text.isEditing) {
@@ -75,6 +84,14 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
                             editorEngine.elements.shiftClick(el);
                         } else {
                             editorEngine.elements.click([el]);
+                            // Absolutely-positioned elements are dragged/resized by the Moveable layer
+                            // (MoveableSelectionLayer), so don't arm the legacy free-move path for them.
+                            // Flow elements still use the legacy index-reorder drag.
+                            const pos2 = el.styles?.computed?.position;
+                            const handledByMoveable = pos2 === 'absolute' || pos2 === 'fixed';
+                            if (!handledByMoveable) {
+                                editorEngine.move.startDragPreparation(el, pos, frameData);
+                            }
                         }
                         break;
                     case MouseAction.DOUBLE_CLICK:
@@ -100,17 +117,25 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
             if (editorEngine.state.isDragSelecting) {
                 return;
             }
+            // While drawing an insert rectangle, updating it takes priority over hover.
+            if (editorEngine.insert.isDrawing) {
+                editorEngine.insert.draw(e);
+                return;
+            }
+            // A primed/active drag takes priority over hover: move the selected element.
+            if (editorEngine.move.state) {
+                await editorEngine.move.drag(e, getRelativeMousePosition);
+                return;
+            }
+            const insertMode = editorEngine.state.insertMode;
             if (
                 editorEngine.state.editorMode === EditorMode.DESIGN ||
                 editorEngine.state.editorMode === EditorMode.CODE ||
-                ((editorEngine.state.insertMode === InsertMode.INSERT_DIV ||
-                    editorEngine.state.insertMode === InsertMode.INSERT_TEXT ||
-                    editorEngine.state.insertMode === InsertMode.INSERT_IMAGE) &&
-                    !editorEngine.insert.isDrawing)
+                insertMode === InsertMode.INSERT_DIV ||
+                insertMode === InsertMode.INSERT_TEXT ||
+                insertMode === InsertMode.INSERT_IMAGE
             ) {
                 await handleMouseEvent(e, MouseAction.MOVE);
-            } else if (editorEngine.insert.isDrawing) {
-                editorEngine.insert.draw(e);
             }
         }, 16),
         [editorEngine.state.isDragSelecting, editorEngine.state.editorMode, editorEngine.insert.isDrawing, getRelativeMousePosition, handleMouseEvent],
@@ -137,14 +162,17 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
     }
 
     async function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-        if (editorEngine.state.editorMode === EditorMode.DESIGN || editorEngine.state.editorMode === EditorMode.CODE) {
-            await handleMouseEvent(e, MouseAction.MOUSE_DOWN);
-        } else if (
+        // Draw-to-insert for div/text takes priority over selection. Image/video are inserted via
+        // drag&drop or the file picker, not by drawing, so they don't start a draw here.
+        if (
             editorEngine.state.insertMode === InsertMode.INSERT_DIV ||
-            editorEngine.state.insertMode === InsertMode.INSERT_TEXT ||
-            editorEngine.state.insertMode === InsertMode.INSERT_IMAGE
+            editorEngine.state.insertMode === InsertMode.INSERT_TEXT
         ) {
             editorEngine.insert.start(e);
+            return;
+        }
+        if (editorEngine.state.editorMode === EditorMode.DESIGN || editorEngine.state.editorMode === EditorMode.CODE) {
+            await handleMouseEvent(e, MouseAction.MOUSE_DOWN);
         }
     }
 
@@ -154,6 +182,11 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
             return;
         }
 
+        // Finish any active/primed drag first (persists left/top or a reorder; a plain click with no
+        // movement is cleaned up here too), then let the insert tool finalize a drawn element.
+        if (editorEngine.move.state) {
+            await editorEngine.move.end(e);
+        }
         await editorEngine.insert.end(e, frameData.view);
     }
 
@@ -169,6 +202,11 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
 
         try {
             const propertiesData = e.dataTransfer.getData('application/json');
+            debugLog('[CC-DROP] handleDrop fired', {
+                hasJson: !!propertiesData,
+                types: Array.from(e.dataTransfer.types),
+                jsonPreview: propertiesData?.slice(0, 120),
+            });
             if (!propertiesData) {
                 throw new Error('No element properties in drag data');
             }

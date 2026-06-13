@@ -1,7 +1,9 @@
+import { debugLog } from '@/lib/debug';
 import type { CoreElementType, DomElement, DynamicType } from '@onlook/models';
 import type { RemoveElementAction } from '@onlook/models/actions';
 import { toast } from '@onlook/ui/sonner';
 import { makeAutoObservable } from 'mobx';
+import { getActiveProject } from '@/lib/design-session';
 import type { EditorEngine } from '../engine';
 import type { FrameData } from '../frames';
 import { adaptRectToCanvas } from '../overlay/utils';
@@ -129,29 +131,38 @@ export class ElementsManager {
                 return;
             }
             const oid = selectedEl.instanceId ?? selectedEl.oid;
+            debugLog('[CC-DELETE] selected id', { domId: selectedEl.domId, oid, tag: selectedEl.tagName });
             if (!oid) {
                 this.emitError('OID not found. Try refreshing the page.');
                 return;
             }
 
-            const branchData = this.editorEngine.branches.getBranchDataById(selectedEl.branchId);
-            if (!branchData) {
-                this.emitError(`Branch data not found for branchId: ${selectedEl.branchId}. Try refreshing the page.`);
-                return;
+            // Static HTML projects have no JSX/oid metadata pipeline. The remove-element action is
+            // persisted by applyHtmlRemove via the element's data-cc-id (target.oid), so we must NOT
+            // require a JSX code block here (that requirement made Delete silently no-op on HTML).
+            const isHtml = getActiveProject()?.framework === 'html';
+            if (!isHtml) {
+                const branchData = this.editorEngine.branches.getBranchDataById(selectedEl.branchId);
+                if (!branchData) {
+                    this.emitError(`Branch data not found for branchId: ${selectedEl.branchId}. Try refreshing the page.`);
+                    return;
+                }
+
+                const metadata = await branchData.codeEditor.getJsxElementMetadata(oid);
+
+                if (!metadata?.code) {
+                    this.emitError('Code block not found. Try refreshing the page.');
+                    return;
+                }
+
+                removeAction.codeBlock = metadata.code;
             }
 
-            const metadata = await branchData.codeEditor.getJsxElementMetadata(oid);
-
-            if (!metadata?.code) {
-                this.emitError('Code block not found. Try refreshing the page.');
-                return;
-            }
-
-            removeAction.codeBlock = metadata.code;
-
-            this.editorEngine.action.run(removeAction).catch((err) => {
-                console.error('Error deleting element', err);
-            });
+            this.editorEngine.action.run(removeAction)
+                .then(() => debugLog('[CC-DELETE] writeback result: action dispatched', { oid }))
+                .catch((err) => {
+                    console.error('[CC-DELETE] Error deleting element', err);
+                });
         }
     }
 

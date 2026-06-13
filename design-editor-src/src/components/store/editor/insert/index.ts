@@ -1,3 +1,4 @@
+import { debugLog } from '@/lib/debug';
 import type { IFrameView } from '@/app/project/[id]/_components/canvas/frame/view';
 import { DefaultSettings, EditorAttributes } from '@onlook/constants';
 import type {
@@ -20,6 +21,9 @@ import { StyleChangeType } from '@onlook/models/style';
 import { colors } from '@onlook/ui/tokens';
 import { canHaveBackgroundImage, createDomId, createOid, isVideoFile, urlToRelativePath } from '@onlook/utility';
 import type React from 'react';
+import { toast } from '@onlook/ui/sonner';
+import { getActiveProject } from '@/lib/design-session';
+import { applyHtmlAttrEdit, assetSrcForPage, pageFileForPathname, saveAsset } from '@/lib/html-writeback';
 import type { EditorEngine } from '../engine';
 import type { FrameData } from '../frames';
 import { getRelativeMousePositionToFrameView } from '../overlay/utils';
@@ -27,6 +31,8 @@ import { getRelativeMousePositionToFrameView } from '../overlay/utils';
 export class InsertManager {
     isDrawing = false;
     private drawOrigin: ElementPosition | undefined;
+    // Cascades successive toolbar inserts so multiple media don't stack on the exact same pixel.
+    private mediaInsertCount = 0;
 
     constructor(private editorEngine: EditorEngine) { }
 
@@ -96,6 +102,32 @@ export class InsertManager {
         await this.insertElement(frameView, newRect, origin);
         this.drawOrigin = undefined;
         this.editorEngine.state.editorMode = EditorMode.DESIGN;
+        // The insert tool is one-shot: clear it so the next click selects again.
+        this.editorEngine.state.insertMode = null;
+    }
+
+    /**
+     * Inserts a media file chosen from a file picker (the Insert Image/Video toolbar buttons) into
+     * the center of the frame. Reuses the same write-back path as a drag&drop: the file is saved to
+     * /assets and an <img>/<video> is written to the source HTML. Image vs video is decided by mime.
+     */
+    async insertMediaFile(frame: FrameData, imageData: ImageContentData) {
+        if (!frame.view) {
+            console.error('No frame view found');
+            return;
+        }
+        // Cascade each successive insert by a small diagonal step (wrapping) so repeated toolbar
+        // inserts don't all land on the exact same left/top and stack invisibly.
+        const step = (this.mediaInsertCount++ % 8) * 24;
+        const cx = Math.round(frame.frame.dimension.width / 2) + step;
+        const cy = Math.round(frame.frame.dimension.height / 2) + step;
+        let location = await frame.view.getInsertLocation(cx, cy);
+        if (!location) {
+            // Fallback: append to <body> (applyHtmlInsert resolves a null targetOid to body).
+            location = { type: 'append', targetDomId: '', targetOid: null };
+        }
+        await this.insertImageElement(frame, location, imageData, { x: cx, y: cy });
+        this.editorEngine.state.insertMode = null;
     }
 
     private updateInsertRect(pos: ElementPosition) {
@@ -174,34 +206,42 @@ export class InsertManager {
         const branchId = frameData.frame.branchId;
 
         const mode = this.editorEngine.state.insertMode;
+        const isText = mode === InsertMode.INSERT_TEXT;
         const domId = createDomId();
         const oid = createOid();
         const width = Math.max(Math.round(newRect.width), 30);
         const height = Math.max(Math.round(newRect.height), 30);
-        const styles: Record<string, string> =
-            mode === InsertMode.INSERT_TEXT
-                ? {
-                    width: `${width}px`,
-                    height: `${height}px`,
-                }
-                : {
-                    width: `${width}px`,
-                    height: `${height}px`,
-                    backgroundColor: colors.blue[100],
-                };
+        const styles: Record<string, string> = isText
+            ? { width: `${width}px`, height: `${height}px` }
+            : { width: `${width}px`, height: `${height}px`, backgroundColor: colors.blue[100] };
+
+        // Static HTML: insert absolute and anchored to <body> at the draw point so the element
+        // actually appears where the user drew it (a flow insert lands at the end of <body>, off
+        // screen and, for empty text, invisible). Same model as inserted media; freely movable after.
+        let effectiveLocation = location;
+        if (this.isHtmlProject()) {
+            styles.position = 'absolute';
+            styles.left = `${Math.max(0, Math.round(origin.x))}px`;
+            styles.top = `${Math.max(0, Math.round(origin.y))}px`;
+            effectiveLocation = { type: 'append', targetDomId: '', targetOid: null };
+        }
+
+        // Empty <p> renders as nothing, so give inserted text visible placeholder content. If inline
+        // editing engages the user types over it; otherwise it stays visible and editable.
+        const textContent = isText ? 'Texto' : null;
 
         const actionElement: ActionElement = {
             domId,
             oid,
             branchId,
-            tagName: mode === InsertMode.INSERT_TEXT ? 'p' : 'div',
+            tagName: isText ? 'p' : 'div',
             attributes: {
                 [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
                 [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
                 [EditorAttributes.DATA_ONLOOK_ID]: oid,
             },
             children: [],
-            textContent: null,
+            textContent,
             styles,
         };
 
@@ -217,9 +257,9 @@ export class InsertManager {
         return {
             type: 'insert-element',
             targets: targets,
-            location: location,
+            location: effectiveLocation,
             element: actionElement,
-            editText: mode === InsertMode.INSERT_TEXT,
+            editText: isText,
             pasteParams: null,
             codeBlock: null,
         };
@@ -237,9 +277,10 @@ export class InsertManager {
         }
 
         const location = await frame.view.getInsertLocation(dropPosition.x, dropPosition.y);
+        debugLog('[CC-DROP] insertDroppedImage getInsertLocation ->', location, { dropPosition });
 
         if (!location) {
-            console.error('Failed to get insert location for drop');
+            console.error('[CC-DROP] Failed to get insert location for drop -> aborting (no image inserted)');
             return;
         }
 
@@ -248,9 +289,10 @@ export class InsertManager {
             dropPosition.y,
             true,
         );
+        debugLog('[CC-DROP] insertDroppedImage getElementAtLoc ->', targetElement?.tagName, targetElement?.domId);
 
         if (!targetElement) {
-            console.error('Failed to get element at drop position');
+            console.error('[CC-DROP] Failed to get element at drop position -> aborting (no image inserted)');
             return;
         }
 
@@ -265,11 +307,26 @@ export class InsertManager {
         if (!isVideo && altKey && canHaveBackgroundImage(targetElement.tagName)) {
             const actionElement = await frame.view.getActionElement(targetElement.domId);
             if (actionElement) {
-                this.updateElementBackgroundAction(frame, actionElement, imageData, targetElement);
+                await this.updateElementBackgroundAction(frame, actionElement, imageData, targetElement);
                 return;
             }
         }
-        this.insertImageElement(frame, location, imageData);
+        await this.insertImageElement(frame, location, imageData, dropPosition);
+    }
+
+    private isHtmlProject(): boolean {
+        return getActiveProject()?.framework === 'html';
+    }
+
+    /** Page file (index.html, nav/index.html...) for a frame, from its logical URL. */
+    private pageFileForFrame(frame: FrameData): string {
+        let pathname = '/';
+        try {
+            if (frame.frame.url) pathname = new URL(frame.frame.url).pathname;
+        } catch {
+            /* keep default */
+        }
+        return pageFileForPathname(pathname);
     }
 
     private async updateImageSource(
@@ -279,6 +336,25 @@ export class InsertManager {
     ) {
         if (!frame.view) {
             console.error('No frame view found');
+            return;
+        }
+
+        // Static HTML: copy the asset to /assets and rewrite the existing <img>'s src in the real
+        // source (the JSX remove+insert path does not apply and would warn as unsupported).
+        if (this.isHtmlProject()) {
+            const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
+            if (!assetRel) {
+                toast.warning('No se pudo leer el asset para guardarlo.');
+                return;
+            }
+            const pageFile = this.pageFileForFrame(frame);
+            const src = assetSrcForPage(assetRel, pageFile);
+            const result = await applyHtmlAttrEdit(targetElement.oid, { src, alt: imageData.fileName }, pageFile);
+            if (result.ok) {
+                frame.view.reload();
+            } else {
+                toast.warning('No se pudo actualizar la imagen en el HTML.');
+            }
             return;
         }
 
@@ -347,21 +423,62 @@ export class InsertManager {
         await this.editorEngine.action.run(insertAction);
     }
 
-    insertImageElement(frame: FrameData, location: ActionLocation, imageData: ImageContentData) {
-        const url = imageData.originPath.replace(
-            new RegExp(`^${DefaultSettings.IMAGE_FOLDER}\/`),
-            '',
-        );
+    async insertImageElement(
+        frame: FrameData,
+        location: ActionLocation,
+        imageData: ImageContentData,
+        position?: ElementPosition,
+    ) {
         const domId = createDomId();
         const oid = createOid();
         const isVideo = isVideoFile(imageData.mimeType || imageData.fileName);
+
+        // Static HTML: copy the dropped media (image OR video) into the project's /assets and
+        // reference it page-relative. Falls back to reading originPath when content is empty. If the
+        // asset cannot be saved we warn and abort instead of inserting a broken src.
+        let src: string;
+        const isHtml = this.isHtmlProject();
+        if (isHtml) {
+            const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
+            if (!assetRel) {
+                toast.warning('No se pudo leer el asset para guardarlo.');
+                return;
+            }
+            src = assetSrcForPage(assetRel, this.pageFileForFrame(frame));
+        } else {
+            const url = imageData.originPath.replace(
+                new RegExp(`^${DefaultSettings.IMAGE_FOLDER}\/`),
+                '',
+            );
+            src = `/${url}`;
+        }
 
         const commonAttributes = {
             [EditorAttributes.DATA_ONLOOK_ID]: oid,
             [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
             [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
-            src: `/${url}`,
+            src,
         };
+
+        // For static HTML, drop media as position:absolute anchored to the page so it can be moved
+        // freely afterwards (see MoveManager's absolute path). left/top come from the insertion point
+        // (drop position or frame center). We also anchor the element to <body> so left/top are page
+        // coordinates regardless of which element was under the cursor. Non-HTML keeps flow layout.
+        const baseStyles: Record<string, string> = {
+            width: DefaultSettings.IMAGE_DIMENSION.width,
+            height: DefaultSettings.IMAGE_DIMENSION.height,
+            // Keep the media sane when the user resizes the box with the Moveable handles.
+            objectFit: 'cover',
+        };
+        let effectiveLocation = location;
+        if (isHtml) {
+            const left = Math.max(0, Math.round(position?.x ?? 0));
+            const top = Math.max(0, Math.round(position?.y ?? 0));
+            baseStyles.position = 'absolute';
+            baseStyles.left = `${left}px`;
+            baseStyles.top = `${top}px`;
+            effectiveLocation = { type: 'append', targetDomId: '', targetOid: null };
+        }
 
         // Videos become a real <video controls> element; images stay <img>. Treating a
         // video as an image would drop the controls and the correct media semantics.
@@ -376,10 +493,7 @@ export class InsertManager {
                     ...commonAttributes,
                     controls: '',
                 },
-                styles: {
-                    width: DefaultSettings.IMAGE_DIMENSION.width,
-                    height: DefaultSettings.IMAGE_DIMENSION.height,
-                },
+                styles: { ...baseStyles },
                 textContent: null,
             }
             : {
@@ -392,10 +506,7 @@ export class InsertManager {
                     ...commonAttributes,
                     alt: imageData.fileName,
                 },
-                styles: {
-                    width: DefaultSettings.IMAGE_DIMENSION.width,
-                    height: DefaultSettings.IMAGE_DIMENSION.height,
-                },
+                styles: { ...baseStyles },
                 textContent: null,
             };
 
@@ -403,7 +514,7 @@ export class InsertManager {
             type: 'insert-element',
             targets: [{ frameId: frame.frame.id, branchId: frame.frame.branchId, domId, oid }],
             element: mediaElement,
-            location,
+            location: effectiveLocation,
             editText: false,
             pasteParams: null,
             codeBlock: null,
@@ -411,16 +522,29 @@ export class InsertManager {
         this.editorEngine.action.run(action);
     }
 
-    updateElementBackgroundAction(
+    async updateElementBackgroundAction(
         frame: FrameData,
         targetElement: ActionElement,
         imageData: ImageContentData,
         originalElement: DomElement,
     ) {
-        const url = imageData.originPath.replace(
-            new RegExp(`^${DefaultSettings.IMAGE_FOLDER}\/`),
-            '',
-        );
+        // Static HTML: copy the asset to /assets and reference it page-relative; persists as an
+        // inline background-image via the normal update-style write-back.
+        let bgUrl: string;
+        if (this.isHtmlProject()) {
+            const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
+            if (!assetRel) {
+                toast.warning('No se pudo leer el asset para guardarlo.');
+                return;
+            }
+            bgUrl = assetSrcForPage(assetRel, this.pageFileForFrame(frame));
+        } else {
+            const url = imageData.originPath.replace(
+                new RegExp(`^${DefaultSettings.IMAGE_FOLDER}\/`),
+                '',
+            );
+            bgUrl = `/${url}`;
+        }
         const originStyles = originalElement.styles?.computed;
         let original = {};
         if (originStyles?.backgroundImage) {
@@ -450,7 +574,7 @@ export class InsertManager {
                     change: {
                         updated: {
                             backgroundImage: {
-                                value: `url('/${url}')`,
+                                value: `url('${bgUrl}')`,
                                 type: StyleChangeType.Value,
                             },
                             backgroundSize: {
