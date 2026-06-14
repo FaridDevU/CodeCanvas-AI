@@ -1,4 +1,5 @@
 import { useEditorEngine } from '@/components/store/editor';
+import { getActiveProject } from '@/lib/design-session';
 import type { PageNode } from '@onlook/models/pages';
 import {
     ContextMenu,
@@ -31,6 +32,9 @@ export const PageTreeNode: React.FC<PageTreeNodeProps> = observer(({ node, style
 
     const hasChildren = node.data.children && node.data.children.length > 0;
     const isActive = editorEngine.pages.isNodeActive(node.data);
+    // Page create/rename/delete/duplicate are only implemented for Next.js (App Router). For static
+    // HTML the page list is navigable but those actions aren't supported yet, so we don't offer them.
+    const isHtml = getActiveProject()?.framework === 'html';
 
     const getBaseName = (fullPath: string) => {
         return fullPath.split('/').pop() ?? '';
@@ -116,38 +120,44 @@ export const PageTreeNode: React.FC<PageTreeNodeProps> = observer(({ node, style
         },
     ];
 
+    const rowContent = (
+        <div
+            style={style}
+            className={cn(
+                'flex items-center h-6 cursor-pointer rounded hover:bg-background-hover',
+                isActive && 'hover:bg-red-500/90 bg-red-500 text-white',
+            )}
+            onClick={handleClick}
+        >
+            <span className="w-4 h-4 flex-none relative">
+                {hasChildren && (
+                    <div className="w-4 h-4 flex items-center justify-center absolute z-50">
+                        <motion.div initial={false} animate={{ rotate: node.isOpen ? 90 : 0 }}>
+                            <Icons.ChevronRight className="h-2.5 w-2.5" />
+                        </motion.div>
+                    </div>
+                )}
+            </span>
+            {!node.data.isRoot &&
+                (hasChildren ? (
+                    <Icons.Directory className="w-4 h-4 mr-2" />
+                ) : (
+                    <Icons.File className="w-4 h-4 mr-2" />
+                ))}
+            <span>{node.data.name}</span>
+        </div>
+    );
+
+    // Static HTML: navigable list only, no page-management context menu.
+    if (isHtml) {
+        return rowContent;
+    }
+
     return (
         <>
             <ContextMenu>
                 <ContextMenuTrigger>
-                    <div
-                        style={style}
-                        className={cn(
-                            'flex items-center h-6 cursor-pointer rounded hover:bg-background-hover',
-                            isActive && 'hover:bg-red-500/90 bg-red-500 text-white',
-                        )}
-                        onClick={handleClick}
-                    >
-                        <span className="w-4 h-4 flex-none relative">
-                            {hasChildren && (
-                                <div className="w-4 h-4 flex items-center justify-center absolute z-50">
-                                    <motion.div
-                                        initial={false}
-                                        animate={{ rotate: node.isOpen ? 90 : 0 }}
-                                    >
-                                        <Icons.ChevronRight className="h-2.5 w-2.5" />
-                                    </motion.div>
-                                </div>
-                            )}
-                        </span>
-                        {!node.data.isRoot &&
-                            (hasChildren ? (
-                                <Icons.Directory className="w-4 h-4 mr-2" />
-                            ) : (
-                                <Icons.File className="w-4 h-4 mr-2" />
-                            ))}
-                        <span>{node.data.name}</span>
-                    </div>
+                    {rowContent}
                 </ContextMenuTrigger>
                 <ContextMenuContent>
                     {menuItems.map((item) => (

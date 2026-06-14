@@ -1,3 +1,7 @@
+// NOTE: visual port, no runtime Stencil. These device frames are a plain CSS decoration adapted
+// from lite-frames (MIT); we do NOT load the lite-frames Stencil/Web Components runtime. The frame
+// is purely cosmetic and never changes the preview's logical size (see device-frame.css).
+//
 // Cosmetic device frame drawn around the preview iframe. The frame type is derived from
 // the frame's logical dimension using the same device classification as the existing
 // device selector (computeWindowMetadata + getDeviceType), so it follows the selector
@@ -9,7 +13,10 @@ import './device-frame.css';
 
 export type DeviceFrameType = 'phone' | 'tablet' | 'laptop';
 
-/** Maps a logical viewport size to a device frame, or null when there is no good match. */
+/** Maps a logical viewport size to a device frame, or null when there is no good match.
+ * Desktop-class sizes (Desktop, Wireframe, TV, iMac) render plainly with no frame: a laptop
+ * bezel on a TV or all-in-one looks wrong, and we have no dedicated TV/iMac frame. Only Laptop
+ * sizes (the MacBook range) get the laptop frame. */
 export function deviceFrameTypeFor(width: number, height: number): DeviceFrameType | null {
     const device = computeWindowMetadata(String(width), String(height)).device;
     switch (getDeviceType(device)) {
@@ -18,8 +25,8 @@ export function deviceFrameTypeFor(width: number, height: number): DeviceFrameTy
         case 'Tablet':
             return 'tablet';
         case 'Laptop':
-        case 'Desktop':
             return 'laptop';
+        case 'Desktop':
         default:
             return null;
     }

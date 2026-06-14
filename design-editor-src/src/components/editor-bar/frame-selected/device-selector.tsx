@@ -36,34 +36,46 @@ const CustomIcon = ({ orientation, className }: { orientation: Orientation, clas
 
 export const DeviceSelector = observer(() => {
     const editorEngine = useEditorEngine();
-    const frameData = editorEngine.frames.selected[0];
+    // Persistent toolbar control: act on the selected frame, or fall back to the first frame on the
+    // canvas so the device selector stays usable when nothing is selected (e.g. in Preview).
+    const frameData = editorEngine.frames.selected[0] ?? editorEngine.frames.getAll()[0];
+    const frameWidth = frameData?.frame.dimension.width;
+    const frameHeight = frameData?.frame.dimension.height;
+
+    // NOTE: every hook must run unconditionally before any early return, otherwise the hook count
+    // changes when the frame appears/disappears and React throws (this used to blank the toolbar).
     const [isOpen, setIsOpen] = useState(false);
     const [metadata, setMetadata] = useState<WindowMetadata>(() =>
-        computeWindowMetadata(
-            frameData?.frame.dimension.width.toString() ?? '0',
-            frameData?.frame.dimension.height.toString() ?? '0'
-        )
+        computeWindowMetadata(String(frameWidth ?? 0), String(frameHeight ?? 0))
     );
+    const [device, setDevice] = useState('Custom:Custom');
 
     useEffect(() => {
-        setMetadata(computeWindowMetadata(frameData?.frame.dimension.width.toString() ?? '0', frameData?.frame.dimension.height.toString() ?? '0'));
-    }, [frameData?.frame.dimension.width, frameData?.frame.dimension.height]);
+        setMetadata(computeWindowMetadata(String(frameWidth ?? 0), String(frameHeight ?? 0)));
+    }, [frameWidth, frameHeight]);
 
-    if (!frameData) return null;
-
-    const deviceType = useMemo(() => getDeviceType(metadata.device), [metadata.device]);
-
-    const [device, setDevice] = useState(() => {
+    // Keep the selected option label in sync with the frame's real dimensions.
+    useEffect(() => {
+        let match = 'Custom:Custom';
         for (const category in DEVICE_OPTIONS) {
             for (const deviceName in DEVICE_OPTIONS[category]) {
-                const res = DEVICE_OPTIONS[category][deviceName];
-                if (res === `${metadata.width}x${metadata.height}`) {
-                    return `${category}:${deviceName}`;
+                if (DEVICE_OPTIONS[category][deviceName] === `${metadata.width}x${metadata.height}`) {
+                    match = `${category}:${deviceName}`;
                 }
             }
         }
-        return 'Custom:Custom';
-    });
+        setDevice(match);
+    }, [metadata.width, metadata.height]);
+
+    const deviceType = useMemo(() => getDeviceType(metadata.device), [metadata.device]);
+    // Show the chosen device NAME (e.g. "iMac"), not just its category, so picking iMac doesn't
+    // appear to revert to "Desktop". Falls back to the type for Custom sizes.
+    const deviceLabel = useMemo(() => {
+        const name = device.split(':')[1];
+        return name && name !== 'Custom' ? name : deviceType;
+    }, [device, deviceType]);
+
+    if (!frameData) return null;
 
     const handleDeviceChange = (value: string) => {
         setDevice(value);
@@ -80,6 +92,8 @@ export const DeviceSelector = observer(() => {
                 const roundedWidth = Math.round(w);
                 const roundedHeight = Math.round(h);
                 editorEngine.frames.updateAndSaveToStorage(frameData.frame.id, { dimension: { width: roundedWidth, height: roundedHeight } });
+                // Resizing can push the frame out of view; recenter so it stays usable.
+                editorEngine.frameEvent.recenterCanvas();
             }
         }
     };
@@ -87,29 +101,37 @@ export const DeviceSelector = observer(() => {
     return (
         <Select value={device} onValueChange={handleDeviceChange} onOpenChange={setIsOpen}>
             <HoverOnlyTooltip content="Device" side="bottom" sideOffset={10} disabled={isOpen}>
-                <SelectTrigger size="sm" className="group flex items-center gap-2 text-muted-foreground dark:bg-transparent border border-border/0 cursor-pointer rounded-lg hover:bg-background-tertiary/20 hover:text-white hover:border hover:border-border focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none focus-visible:outline-none">
+                <SelectTrigger size="sm" className="group flex items-center gap-2 text-muted-foreground dark:bg-transparent border border-border/0 cursor-pointer rounded-lg hover:bg-background-tertiary/20 hover:text-foreground hover:border hover:border-border focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none focus-visible:outline-none">
                     <DeviceIcon deviceType={deviceType} orientation={metadata.orientation} className="group-hover:text-foreground-primary" />
-                    <span className="text-smallPlus">{deviceType}</span>
+                    <span className="text-smallPlus">{deviceLabel}</span>
                 </SelectTrigger>
             </HoverOnlyTooltip>
-            <SelectContent>
-                {Object.entries(DEVICE_OPTIONS).map(([category, devices]) => (
+            <SelectContent
+                position="popper"
+                side="bottom"
+                align="start"
+                sideOffset={6}
+                // Clamp to the space Radix actually measured below the trigger so the list never
+                // overflows the top of the viewport (it gets a scrollbar instead of being clipped).
+                className="max-h-[min(60vh,var(--radix-select-content-available-height))] min-w-[220px]"
+            >
+                {Object.entries(DEVICE_OPTIONS).map(([category, devices], categoryIdx) => (
                     <SelectGroup key={category}>
-                        <SelectLabel className="text-xs">{category}</SelectLabel>
+                        {categoryIdx > 0 && <SelectSeparator className="bg-border/50" />}
+                        <SelectLabel className="text-xs text-foreground-tertiary px-2 pt-1.5 pb-1">{category}</SelectLabel>
                         {Object.entries(devices).map(([name, dimensions]) => (
                             <SelectItem
                                 key={`${category}:${name}`}
                                 value={`${category}:${name}`}
                                 className={cn(
-                                    'text-xs flex items-center cursor-pointer',
-                                    device === `${category}:${name}` && 'bg-background-tertiary/50 text-foreground-primary'
+                                    'text-xs flex items-center cursor-pointer gap-2 py-1.5',
+                                    device === `${category}:${name}` && 'bg-background-tertiary/25 text-foreground-primary'
                                 )}
                             >
                                 <DeviceIcon deviceType={category} orientation={metadata.orientation} className={`${device === `${category}:${name}` ? 'text-foreground-primary' : 'text-foreground-onlook'}`} />
                                 {name} <span className={`text-micro ${device === `${category}:${name}` ? 'text-foreground-primary' : 'text-foreground-tertiary'}`}>{dimensions.replace('x', '×')}</span>
                             </SelectItem>
                         ))}
-                        <SelectSeparator />
                     </SelectGroup>
                 ))}
             </SelectContent>

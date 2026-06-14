@@ -50,10 +50,14 @@ export class StyleManager {
         this.updateMultiple({ [style]: value });
     }
 
-    updateMultiple(styles: Record<string, string>) {
+    // Returns the run promise so callers that must observe the persisted result (e.g. converting an
+    // element to free editing, which writes a marker attribute to the SAME file right after) can await
+    // it and avoid a read-modify-write race on the source HTML. Fire-and-forget callers can ignore it.
+    updateMultiple(styles: Record<string, string>): Promise<void> {
         const action = this.getUpdateStyleAction(styles);
-        this.editorEngine.action.run(action);
+        const ran = this.editorEngine.action.run(action);
         this.updateStyleNoAction(styles);
+        return ran;
     }
 
     updateFontFamily(style: string, value: Font) {

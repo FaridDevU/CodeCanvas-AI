@@ -16,6 +16,8 @@ import { useTranslations } from 'next-intl';
 import { BranchDisplay } from './branch';
 import { ModeToggle } from './mode-toggle';
 import { ProjectBreadcrumb } from './project-breadcrumb';
+import { DeviceSelector } from '../editor-bar/frame-selected/device-selector';
+import { FramesToggleGroup } from '../editor-bar/frame-selected/frames-toggle-group';
 
 export const TopBar = observer(() => {
     const stateManager = useStateManager();
@@ -39,13 +41,20 @@ export const TopBar = observer(() => {
 
     return (
         <div className="flex flex-row h-10 p-0 justify-center items-center bg-background-onlook/60 backdrop-blur-xl">
-            <div className="flex flex-row flex-grow basis-0 justify-start items-center">
+            <div className="flex flex-row flex-grow basis-0 min-w-0 overflow-hidden justify-start items-center">
                 <ProjectBreadcrumb />
                 <span className="text-foreground-secondary/50 text-small">/</span>
                 <BranchDisplay />
             </div>
-            <ModeToggle />
-            <div className="flex flex-grow basis-0 justify-end items-center gap-1.5 mr-2">
+            {/* Persistent device controls: stay visible in Design AND Preview so the designer can
+                always switch device/screen and toggle the frame bezel without selecting anything.
+                shrink-0 guarantees this cluster is never clipped by the breadcrumb/actions overflow. */}
+            <div className="flex items-center gap-1 shrink-0">
+                <DeviceSelector />
+                <FramesToggleGroup />
+                <ModeToggle />
+            </div>
+            <div className="flex flex-grow basis-0 min-w-0 justify-end items-center gap-1.5 mr-2">
                 <motion.div
                     className="space-x-0 hidden lg:block -mr-1"
                     layout

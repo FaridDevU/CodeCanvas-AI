@@ -35,6 +35,16 @@ const NON_EDITABLE_TAGS = new Set([
 // Durable, source-persisted element identity. Survives insert/move/delete (unlike a positional
 // index). The proxy prefers this as the oid once a page has been instrumented with it.
 const CC_ID_ATTR = 'data-cc-id';
+// Persistent marker stamped on elements Design INSERTS (media/box/text). Lets the editor offer free
+// move/resize only for things Design created — never for original flow content. Not an Onlook attr
+// (doesn't match ONLOOK_ATTR_RE below), so the writer keeps it in the user's source.
+export const CC_CREATED_ATTR = 'data-cc-created';
+export const CC_CREATED_VALUE = 'design';
+// Marker stamped on ORIGINAL HTML elements the user explicitly "converts to free editing" (flow ->
+// absolute). Same effect as CC_CREATED for the Moveable gate, but semantically "user opted this
+// original element in". Also a data-c* attribute, so the writer preserves it.
+export const CC_EDITABLE_ATTR = 'data-cc-editable';
+export const CC_EDITABLE_VALUE = 'free';
 // Onlook editor attributes that must never be written into the user's source.
 const ONLOOK_ATTR_RE = /^data-o(id|iid|did|cname|nlook)/i;
 

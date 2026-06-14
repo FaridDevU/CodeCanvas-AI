@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Frames } from './frames';
 import { HotkeysArea } from './hotkeys';
 import { Overlay } from './overlay';
+import { MoveableSelectionLayer } from './overlay/moveable-selection-layer';
+import { CcMoveableHud } from './overlay/cc-moveable-hud';
+import { isDebugEnabled } from '@/lib/debug';
 import { DragSelectOverlay } from './overlay/drag-select';
 import { PanOverlay } from './overlay/pan';
 import { RecenterCanvasButton } from './recenter-canvas-button';
@@ -301,6 +304,10 @@ export const Canvas = observer(() => {
                     isSelecting={isDragSelecting}
                 />
                 <Overlay />
+                <MoveableSelectionLayer />
+                {/* Diagnostic HUD: only in dev or when the user opts in (localStorage cc-debug=1).
+                    Never shown to a normal user. */}
+                {isDebugEnabled() && <CcMoveableHud />}
                 <PanOverlay
                     clampPosition={(position: { x: number; y: number }) =>
                         clampPosition(position, scale)

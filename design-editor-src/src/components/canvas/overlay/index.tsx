@@ -19,22 +19,24 @@ export const Overlay = observer(() => {
     const isSingleSelection = editorEngine.elements.selected.length === 1;
     const isTextEditing = editorEngine.text.isEditing;
 
-    // When the Moveable layer owns the selection (single, absolutely-positioned, design mode, no menu)
-    // it draws its OWN box + handles. Suppress the legacy click-rect outline for that element so the
-    // user doesn't see two overlapping handle systems on the same element.
-    // Must mirror MoveableSelectionLayer's activation gate exactly: only absolute img/video get the
-    // Moveable box, so only for those do we suppress the legacy click-rect. A non-media absolute
-    // element (or a corrupted hero/card) keeps its normal selection outline instead of vanishing.
-    const singleRectPosition = overlayState.clickRects[0]?.styles?.computed?.position;
-    const singleTag = editorEngine.elements.selected[0]?.tagName?.toLowerCase();
+    // When the Moveable layer owns the selection it draws its OWN box + handles, so suppress the legacy
+    // click-rect outline for that element (no two overlapping handle systems). Must mirror
+    // MoveableSelectionLayer's gate EXACTLY, including the IDENTITY MATCH: use the click rect whose id
+    // is the selected element's domId (not clickRects[0], which can be a leftover/other element during
+    // an async refresh). A non-media, non-Design absolute element (or a corrupted hero/card) keeps its
+    // normal outline.
+    const selectedEl = editorEngine.elements.selected[0];
+    const singleRect = selectedEl ? overlayState.clickRects.find((r) => r.id === selectedEl.domId) : undefined;
+    const singleRectPosition = singleRect?.styles?.computed?.position;
+    const singleTag = selectedEl?.tagName?.toLowerCase();
     const isMovableMedia = singleTag === 'img' || singleTag === 'video';
     const moveableOwnsSelection =
         isSingleSelection &&
-        isMovableMedia &&
+        !!singleRect &&
+        (isMovableMedia || editorEngine.elements.selectedIsDesignCreated) &&
         (singleRectPosition === 'absolute' || singleRectPosition === 'fixed') &&
         editorEngine.state.editorMode === EditorMode.DESIGN &&
-        !isTextEditing &&
-        !editorEngine.state.rightClickMenuOpen;
+        !isTextEditing;
 
     const clickRectsElements = useMemo(
         () =>

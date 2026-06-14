@@ -20,6 +20,13 @@ function computeEnabled(): boolean {
 
 const DEBUG_ENABLED = computeEnabled();
 
+// Same gate as debugLog, exposed so non-essential debug UI (e.g. the Moveable HUD) and the
+// cc-moveable-debug log file can be mounted/written ONLY in dev or when the user opts in. Keeps the
+// green diagnostic overlay and the on-disk log out of a normal user's build.
+export function isDebugEnabled(): boolean {
+    return DEBUG_ENABLED;
+}
+
 export function debugLog(...args: unknown[]): void {
     if (DEBUG_ENABLED) {
         // eslint-disable-next-line no-console

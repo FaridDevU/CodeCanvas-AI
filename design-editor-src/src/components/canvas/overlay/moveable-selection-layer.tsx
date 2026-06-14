@@ -16,16 +16,48 @@
 // get handles. Hidden in Preview/text-edit and while a right-click context menu is open.
 
 import { debugLog, debugWarn } from '@/lib/debug';
+import { ccLog } from '@/lib/cc-moveable-debug';
 import { useEditorEngine } from '@/components/store/editor';
+import { RightClickMenu } from '../../right-click-menu';
 import { EditorMode } from '@onlook/models';
 import { StyleChangeType } from '@onlook/models/style';
 import { observer } from 'mobx-react-lite';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Moveable from 'react-moveable';
 
 function num(value: string | undefined, fallback = 0): number {
     const n = parseFloat(value ?? '');
     return Number.isFinite(n) ? n : fallback;
+}
+
+// camelCase -> kebab-case for CSSStyleDeclaration.setProperty (left/top/width/height pass through).
+function toKebab(prop: string): string {
+    return prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+}
+
+// Apply inline styles straight onto the real element inside the SAME-ORIGIN preview iframe, found by
+// its durable dom id (data-odid). This is the live visual update that lets a normal move/resize skip
+// the reload fallback: setting element.style.* wins over the element's own inline geometry, which the
+// preload's stylesheet-based updateStyle could not override. Returns false (so the caller keeps the
+// reload safety net) if the document/element isn't reachable.
+function applyInlineStyleDirect(
+    view: any,
+    domId: string,
+    styles: Record<string, string>,
+): boolean {
+    try {
+        const doc: Document | undefined = view?.contentDocument;
+        if (!doc) return false;
+        const node = doc.querySelector(`[data-odid="${domId}"]`) as HTMLElement | null;
+        if (!node) return false;
+        for (const [key, value] of Object.entries(styles)) {
+            node.style.setProperty(toKebab(key), value);
+        }
+        return true;
+    } catch {
+        // Cross-origin or detached document: fall back to the reload path.
+        return false;
+    }
 }
 
 export const MoveableSelectionLayer = observer(() => {
@@ -46,34 +78,81 @@ export const MoveableSelectionLayer = observer(() => {
     // True only between onDragStart/onResizeStart and the matching End: Moveable owns the proxy then,
     // so the idle sync below must not overwrite the geometry Moveable is mid-applying.
     const gesturing = useRef(false);
+    // DIAGNOSTIC: count onDrag/onResize ticks so we can tell from the log whether events fire at all.
+    const dragTicks = useRef(0);
+    const resizeTicks = useRef(0);
 
     const selected = editorEngine.elements.selected;
     const el = selected.length === 1 ? selected[0] : null;
-    const clickRect = overlay.clickRects.length === 1 ? overlay.clickRects[0] : null;
+    // IDENTITY MATCH (critical): only ever use the click rect whose id is the SELECTED element's domId.
+    // `addClickRect` stores `id = domId` for both selection (`click()`) and overlay refresh, so this is
+    // exact. Using `clickRects[0]` blindly mounted Moveable on a leftover/other-element rect during the
+    // async gap between selecting and the overlay refresh -> the box was offset / didn't track the
+    // element. If there's no rect for THIS element yet, mount nothing (a refresh will produce it).
+    const clickRect = el ? (overlay.clickRects.find((r) => r.id === el.domId) ?? null) : null;
     const position = clickRect?.styles?.computed?.position;
     const isAbsolute = position === 'absolute' || position === 'fixed';
     // Degenerate (collapsed) rects belong to orphaned/zero-size elements (e.g. an image that wrote
     // width:0). Don't attach handles to them: resizing from a 0x0 box produces garbage and creates
     // more orphans. Require a real, measurable box.
     const hasRealSize = !!clickRect && clickRect.width >= 1 && clickRect.height >= 1;
-    // SAFETY GATE: free move/resize is only for media Design inserts (img/video), which are always
-    // absolute-anchored and meant to be dragged. Original flow content (hero, card, h1, p, containers)
-    // must NEVER enter the move system — even if a past corrupt op left it position:absolute — or its
-    // layout breaks. DomElement carries no attributes, so we can't read a "created by Design" marker;
-    // restricting to absolute img/video is the safe, structural equivalent (originals aren't absolute
-    // media). Inserted boxes/text are intentionally excluded for now until a real marker is wired.
+    // SAFETY GATE: free move/resize is ONLY for things Design created — media (img/video, always
+    // absolute-anchored) OR any element stamped with the persistent `data-cc-created="design"` marker
+    // (inserted boxes/text). Original flow content (hero, card, h1, p, containers) must NEVER enter the
+    // move system — even if a past corrupt op left it position:absolute — or its layout breaks. The
+    // marker is read async (elements.selectedIsDesignCreated, via getActionElement) since DomElement
+    // carries no attributes.
     const tag = el?.tagName?.toLowerCase();
     const isMovableMedia = tag === 'img' || tag === 'video';
+    const isDesignCreated = editorEngine.elements.selectedIsDesignCreated;
     const active = !!(
         el &&
         clickRect &&
         hasRealSize &&
         isAbsolute &&
-        isMovableMedia &&
+        (isMovableMedia || isDesignCreated) &&
         editorEngine.state.editorMode === EditorMode.DESIGN &&
-        !editorEngine.text.isEditing &&
-        !editorEngine.state.rightClickMenuOpen
+        !editorEngine.text.isEditing
+        // NOTE: do NOT gate on rightClickMenuOpen here. This layer now hosts its OWN context menu
+        // (right-click on the box); gating on it would unmount the layer the instant the menu opens,
+        // closing it. Handles staying visible behind the open menu is harmless.
     );
+
+    // If the selected element has no matching click rect yet (just selected / overlay not refreshed),
+    // request a refresh so the correct rect is produced by identity — instead of mounting on a wrong
+    // one. Fires once per (element, missing-rect) state; never loops (deps don't change if no rect
+    // appears because the element is gone).
+    useEffect(() => {
+        if (el && !clickRect && !gesturing.current) {
+            void editorEngine.overlay.refresh();
+        }
+    }, [el?.domId, clickRect]);
+
+    // DIAGNOSTIC: log every transition of `active` with all gate inputs, so the log shows whether
+    // Moveable mounts, why it would unmount, and (critically) if it unmounts MID-GESTURE.
+    useEffect(() => {
+        ccLog('active-change', {
+            active,
+            midGesture: gesturing.current,
+            domId: el?.domId,
+            oid: el?.oid,
+            tag,
+            hasClickRect: !!clickRect,
+            clickRectId: clickRect?.id,
+            clickRectCount: overlay.clickRects.length,
+            position,
+            isAbsolute,
+            hasRealSize,
+            isMovableMedia,
+            isDesignCreated,
+            mode: editorEngine.state.editorMode,
+            textEditing: editorEngine.text.isEditing,
+        });
+        if (!active && gesturing.current) {
+            ccLog('UNMOUNT-DURING-GESTURE', { domId: el?.domId });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [active]);
 
     // Single source of truth for the proxy geometry while idle. Runs before paint so Moveable always
     // measures a correctly-sized target (and re-glues after a gesture once the overlay rect refreshes).
@@ -129,51 +208,12 @@ export const MoveableSelectionLayer = observer(() => {
         moveableRef.current?.updateRect();
     };
 
-    // After a reload, re-select the SAME element by IDENTITY (durable oid = data-cc-id, preserved
-    // across reload), located via getElementAtLoc at its new center. CRITICAL: we only ever accept a
-    // hit whose oid equals the expected one. Coordinates alone are unsafe — overlap, iframe scroll, or
-    // the element landing under another would make getElementAtLoc return a DIFFERENT element, and
-    // selecting it would then persist absolute geometry onto e.g. the hero/card and wreck the layout.
-    // So if the identity never matches, we DO NOT change the selection at all (better unselected than
-    // wrong). oid is required; without it we never reselect.
-    const reselectAt = async (centerX: number, centerY: number, oid: string | undefined) => {
-        if (!oid) {
-            debugLog('[CC-MOVEABLE] reselect skipped (no oid)');
-            return;
-        }
-        const deadline = Date.now() + 8000;
-        while (Date.now() < deadline) {
-            await new Promise((r) => setTimeout(r, 150));
-            // Re-fetch the view each tick: the reload remounts the frame, so the registered view
-            // (and its penpal child) is replaced — a reference captured before the reload is dead.
-            const view = editorEngine.frames.get(el.frameId)?.view;
-            if (!view) continue;
-            try {
-                const domEl: any = await view.getElementAtLoc(centerX, centerY, true);
-                if (domEl && domEl.oid === oid) {
-                    editorEngine.elements.click([domEl]);
-                    void editorEngine.overlay.refresh();
-                    debugLog('[CC-MOVEABLE] reselect ok', { oid: domEl.oid, domId: domEl.domId });
-                    return;
-                }
-            } catch {
-                /* frame still reloading; keep polling */
-            }
-        }
-        // Identity never confirmed: leave the selection untouched rather than grab a wrong element.
-        debugLog('[CC-MOVEABLE] reselect timeout (no identity match)', { centerX, centerY, oid });
-    };
-
-    // Persist the final geometry. Strategy: try a LIVE DOM patch first (penpal updateStyle on the
-    // selected element's domId) and VERIFY it actually moved/resized the element (compare the returned
-    // rect against the old one). If it took, we skip the frame reload entirely — no flicker. Only when
-    // the live patch can't be confirmed do we fall back to the reliable-but-flickery reload + reselect.
-    // HTML is always persisted (history.push -> code.write -> writeback) so the file is the source of
-    // truth. `center` is the element's new center in FRAME/CSS space (used by the reload fallback).
-    const persist = async (
-        styles: Record<string, string>,
-        center: { x: number; y: number },
-    ) => {
+    // Persist the final geometry. A LIVE DOM patch (penpal updateStyle on the selected element's domId)
+    // moves/resizes the real element so the canvas updates without a reload, then the change is written
+    // to the HTML file + history (the file is the source of truth). Re-selection afterwards is done by
+    // IDENTITY (domId/oid), never by coordinates.
+    const persist = async (styles: Record<string, string>) => {
+        ccLog('persist-start', { domId: el.domId, oid: el.oid, tag: el.tagName, styles });
         debugLog('[CC-MOVEABLE] selected', {
             domId: el.domId,
             oid: el.oid,
@@ -226,6 +266,18 @@ export const MoveableSelectionLayer = observer(() => {
                 debugWarn('[CC-MOVEABLE] live updateStyle threw', err);
             }
         }
+
+        // 1b. DIRECT INLINE PATCH (the real fix for the reload flicker).
+        // WHY this exists: the Onlook preload's `view.updateStyle` applies geometry through a generated
+        // stylesheet rule, but our inserted media/text carry left/top/width/height as INLINE styles
+        // (higher specificity). The rule can't override inline, so the real element never actually
+        // moved/resized — `view.updateStyle` still reported found:true/sameIdentity:true, the verify
+        // step saw the element "stuck", and we fell back to a full frame reload on EVERY gesture (the
+        // pantallazo). The preview iframe is SAME-ORIGIN, so we reach its document directly and set
+        // element.style.* ourselves — that DOES win over inline and moves the real node, so the normal
+        // path needs no reload. The reload below stays as a safety net for the rare case this fails.
+        const directApplied = applyInlineStyleDirect(view, el.domId, styles);
+        ccLog('direct-inline-patch', { domId: el.domId, applied: directApplied, styles });
         const oldRect: any = el.rect;
         const r: any = liveDomEl?.rect;
         const sameIdentity = !!(liveDomEl && el.oid && liveDomEl.oid === el.oid);
@@ -238,6 +290,12 @@ export const MoveableSelectionLayer = observer(() => {
                 Math.abs(r.height - oldRect.height) > 1)
         );
         const liveApplied = sameIdentity && rectChanged;
+        ccLog('live-update', {
+            domId: el.domId, oid: el.oid, liveOid: liveDomEl?.oid,
+            found: !!liveDomEl, sameIdentity, rectChanged, applied: liveApplied,
+            oldRect: oldRect && { l: Math.round(oldRect.left), t: Math.round(oldRect.top), w: Math.round(oldRect.width), h: Math.round(oldRect.height) },
+            newRect: r && { l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+        });
         debugLog('[CC-MOVEABLE] live update', {
             domId: el.domId, oid: el.oid, liveOid: liveDomEl?.oid,
             found: !!liveDomEl, sameIdentity, rectChanged, applied: liveApplied,
@@ -258,33 +316,145 @@ export const MoveableSelectionLayer = observer(() => {
         };
         try {
             await editorEngine.history.push(action as any);
+            ccLog('persist-result', { domId: el.domId, ok: true });
             debugLog('[CC-MOVEABLE] persist result', { ok: true });
         } catch (error) {
+            ccLog('persist-result', { domId: el.domId, ok: false, error: String(error) });
             debugLog('[CC-MOVEABLE] persist result', { ok: false, error: String(error) });
         }
 
-        // 3a. Live patch confirmed: re-bind overlay/selection/panel to the updated element. No reload.
-        if (liveApplied) {
-            editorEngine.elements.click([{ ...liveDomEl, frameId: el.frameId }]);
+        // 3. VERIFY the live DOM actually reached the requested geometry — this applies to BOTH resize
+        // (width/height) AND move (left/top). LEARNING (this bug bit us repeatedly): Moveable only drives
+        // a VISUAL PROXY in the parent doc; the real element lives in the iframe and `view.updateStyle`
+        // sometimes does NOT apply the inline change to it (notably <img>). And `persist-result ok:true`
+        // only means the change reached the FILE — it does NOT guarantee the live rect changed. So always
+        // re-read the element's TRUE rect by domId and confirm it actually moved/resized.
+        const reqW = styles.width != null ? parseFloat(styles.width) : null;
+        const reqH = styles.height != null ? parseFloat(styles.height) : null;
+        const reqL = styles.left != null ? parseFloat(styles.left) : null;
+        const reqT = styles.top != null ? parseFloat(styles.top) : null;
+        const TOL = 2;
+
+        let fresh: any = null;
+        if (view) {
+            try {
+                fresh = await view.getElementByDomId(el.domId, true);
+            } catch (err) {
+                debugWarn('[CC-MOVEABLE] reselect getElementByDomId threw', err);
+            }
+        }
+        const fr: any = fresh?.rect;
+        // Detect "stuck at OLD geometry" (live patch silently didn't take) rather than an exact match:
+        // an exact match false-negatives for content-box els with padding (hero: border-box = style+64),
+        // and requested left/top are offset-parent-relative while the rect is document-relative — so we
+        // compare the fresh rect against the OLD rect (same coordinate space) and treat "didn't change"
+        // as the failure. Covers width/height (resize) and left/top (move) identically.
+        const wStuck =
+            reqW != null && !!fr && !!oldRect &&
+            Math.abs(fr.width - reqW) > TOL && Math.abs(fr.width - oldRect.width) <= TOL;
+        const hStuck =
+            reqH != null && !!fr && !!oldRect &&
+            Math.abs(fr.height - reqH) > TOL && Math.abs(fr.height - oldRect.height) <= TOL;
+        // Was a MOVE actually requested? A resize anchored at the top-left re-sends the SAME left/top
+        // as before, so "the rect's left/top didn't change" is the CORRECT result, not a stuck patch.
+        // Comparing the requested left/top to the element's own current (offset-parent-space) left/top
+        // tells us whether a real move was asked for. Without this, every resize false-positived as
+        // posStuck and forced a needless reload (the flicker). reqL/reqT are offset-parent-relative,
+        // so we compare them against computed.left/top (same space), NOT against the document rect.
+        const oldStyleLeft = num(el.styles?.computed?.left, NaN);
+        const oldStyleTop = num(el.styles?.computed?.top, NaN);
+        const moveRequested =
+            (reqL != null && Number.isFinite(oldStyleLeft) && Math.abs(reqL - oldStyleLeft) > TOL) ||
+            (reqT != null && Number.isFinite(oldStyleTop) && Math.abs(reqT - oldStyleTop) > TOL);
+        const posStuck =
+            moveRequested && !!fr && !!oldRect &&
+            Math.abs(fr.left - oldRect.left) <= TOL && Math.abs(fr.top - oldRect.top) <= TOL;
+        const needsReload = wStuck || hStuck || posStuck;
+        ccLog('geom-check', {
+            domId: el.domId,
+            reqW, reqH, reqL, reqT,
+            freshW: fr ? Math.round(fr.width) : null,
+            freshH: fr ? Math.round(fr.height) : null,
+            freshL: fr ? Math.round(fr.left) : null,
+            freshT: fr ? Math.round(fr.top) : null,
+            oldL: oldRect ? Math.round(oldRect.left) : null,
+            oldT: oldRect ? Math.round(oldRect.top) : null,
+            moveRequested, wStuck, hStuck, posStuck, needsReload,
+        });
+
+        if (fresh && !needsReload) {
+            // Live DOM took the change (moved/resized toward the request): reselect by IDENTITY (never
+            // clickRects[0], never coordinates), no reload (no flicker).
+            editorEngine.elements.markOidEditable(el.oid ?? undefined);
+            editorEngine.elements.markOidEditable(fresh.oid);
+            editorEngine.elements.click([{ ...fresh, frameId: el.frameId }]);
             void editorEngine.overlay.refresh();
+            ccLog('reselect-live-ok', { domId: el.domId, oid: fresh.oid });
             return;
         }
 
-        // 3b. Live patch couldn't be confirmed: reload so the canvas matches the file, then re-select.
+        // 3b. SAFETY NET (should now be rare): the live element stayed put even after the direct inline
+        // patch (1b) — e.g. document not reachable, or a stylesheet !important winning. LEARNING: a
+        // persist-result ok:true only confirms the change reached the FILE, NOT that the live DOM moved;
+        // that's why this reload exists. In the normal path the direct inline patch already moved the real
+        // node, so we never get here and there is no flicker. We keep the reload ONLY as a fallback: the
+        // change IS in the file (persist-result ok), so re-render the frame from source, then reselect the
+        // SAME element by OID (durable data-cc-id) — identity-verified, never grabs a different one.
+        ccLog('geom-mismatch-reload', {
+            domId: el.domId, oid: el.oid, reqW, reqH, reqL, reqT,
+            freshW: fr ? Math.round(fr.width) : null, freshH: fr ? Math.round(fr.height) : null,
+        });
         try {
             view?.reload();
         } catch (err) {
             debugWarn('[CC-MOVEABLE] frame reload failed', err);
         }
-        await reselectAt(center.x, center.y, el.oid);
+        // New center in FRAME coords (absolute els in <body> => style left/top ≈ document coords).
+        const cx = (reqL ?? oldRect?.left ?? 0) + (reqW ?? fr?.width ?? oldRect?.width ?? 0) / 2;
+        const cy = (reqT ?? oldRect?.top ?? 0) + (reqH ?? fr?.height ?? oldRect?.height ?? 0) / 2;
+        await reselectByOidAfterReload(cx, cy, el.oid);
+    };
+
+    // After a reload (domId is reassigned, so getElementByDomId can't be used) re-select the SAME
+    // element by OID. getElementAtLoc is only a LOCATOR here: we accept the hit ONLY if its oid equals
+    // the expected one, so it can never grab a different element. If the identity never matches we leave
+    // the selection as-is rather than select something wrong.
+    const reselectByOidAfterReload = async (cx: number, cy: number, oid: string | undefined) => {
+        if (!oid) {
+            ccLog('reselect-after-reload-skip', { reason: 'no-oid' });
+            return;
+        }
+        const deadline = Date.now() + 6000;
+        while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 150));
+            const v = editorEngine.frames.get(el.frameId)?.view;
+            if (!v) continue;
+            try {
+                const domEl: any = await v.getElementAtLoc(cx, cy, true);
+                if (domEl && domEl.oid === oid) {
+                    editorEngine.elements.markOidEditable(domEl.oid);
+                    editorEngine.elements.click([domEl]);
+                    void editorEngine.overlay.refresh();
+                    ccLog('reselect-after-reload-ok', { oid, domId: domEl.domId, w: Math.round(domEl.rect?.width ?? 0), h: Math.round(domEl.rect?.height ?? 0) });
+                    return;
+                }
+            } catch {
+                /* frame still reloading; keep polling */
+            }
+        }
+        ccLog('reselect-after-reload-timeout', { oid, cx: Math.round(cx), cy: Math.round(cy) });
     };
 
     return (
-        // Zero-size wrapper (no footprint). It must NOT set pointer-events:none — Moveable's handles
-        // rely on the initial (auto) value and a `none` ancestor suppressed their hit-testing.
-        <div className="absolute top-0 left-0 h-0 w-0">
-            {/* Geometry is set imperatively (see useLayoutEffect); React only fixes position/pointer. */}
-            <div ref={setProxy} style={{ position: 'absolute', pointerEvents: 'none' }} />
+        // Wrapped in RightClickMenu so a right-click ON the Moveable box opens the same context menu
+        // (Eliminar / Editar texto) as right-clicking the element directly. The control box sits on top
+        // of the iframe, so without this the contextmenu never reached the gesture layer's menu.
+        <RightClickMenu>
+            {/* Zero-size wrapper (no footprint). It must NOT set pointer-events:none — Moveable's
+                handles rely on the initial (auto) value and a `none` ancestor suppressed hit-testing. */}
+            <div className="absolute top-0 left-0 h-0 w-0">
+                {/* Geometry is set imperatively (see useLayoutEffect); React only fixes position/pointer. */}
+                <div ref={setProxy} style={{ position: 'absolute', pointerEvents: 'none' }} />
             {proxy && (
                 <Moveable
                     ref={moveableRef}
@@ -306,12 +476,15 @@ export const MoveableSelectionLayer = observer(() => {
                     dragArea={true}
                     onDragStart={() => {
                         gesturing.current = true;
+                        dragTicks.current = 0;
                         captureBase();
+                        ccLog('dragStart', { domId: el.domId, oid: el.oid, tag, base: base.current, scale: scaleRef.current });
                         debugLog('[CC-MOVEABLE] onDragStart', { domId: el.domId, base: base.current, scale: scaleRef.current });
                     }}
                     onDrag={(e: any) => {
                         // Moveable owns the proxy during the gesture: translate it so the box follows.
                         e.target.style.transform = e.transform;
+                        dragTicks.current++;
                         const s = scaleRef.current;
                         debugLog('[CC-MOVEABLE] drag', {
                             beforeLeft: base.current.left, beforeTop: base.current.top,
@@ -336,20 +509,20 @@ export const MoveableSelectionLayer = observer(() => {
                             gesturing.current = false;
                             const newLeft = base.current.left + last.beforeTranslate[0] / s;
                             const newTop = base.current.top + last.beforeTranslate[1] / s;
-                            void persist(
-                                { left: px(newLeft), top: px(newTop) },
-                                // New center in FRAME/CSS space (size unchanged on a drag).
-                                { x: newLeft + base.current.width / 2, y: newTop + base.current.height / 2 },
-                            );
+                            ccLog('dragEnd', { domId: el.domId, oid: el.oid, dragTicks: dragTicks.current, hasMovement: true });
+                            void persist({ left: px(newLeft), top: px(newTop) });
                         } else {
                             gesturing.current = false;
+                            ccLog('dragEnd', { domId: el.domId, dragTicks: dragTicks.current, hasMovement: false });
                             void editorEngine.overlay.refresh();
                         }
                         debugLog('[CC-MOVEABLE] onDragEnd', { hasMovement: !!last });
                     }}
                     onResizeStart={() => {
                         gesturing.current = true;
+                        resizeTicks.current = 0;
                         captureBase();
+                        ccLog('resizeStart', { domId: el.domId, oid: el.oid, tag, base: base.current, scale: scaleRef.current });
                         debugLog('[CC-MOVEABLE] onResizeStart', { domId: el.domId, base: base.current, scale: scaleRef.current });
                     }}
                     onResize={(e: any) => {
@@ -358,6 +531,7 @@ export const MoveableSelectionLayer = observer(() => {
                         e.target.style.width = `${e.width}px`;
                         e.target.style.height = `${e.height}px`;
                         e.target.style.transform = e.drag.transform;
+                        resizeTicks.current++;
                         const s = scaleRef.current;
                         debugLog('[CC-MOVEABLE] resize', {
                             beforeWidth: base.current.width, beforeHeight: base.current.height,
@@ -385,15 +559,13 @@ export const MoveableSelectionLayer = observer(() => {
                                 height: last.height,
                             });
                             gesturing.current = false;
-                            void persist(
-                                {
-                                    width: px(finalWidth),
-                                    height: px(finalHeight),
-                                    left: px(finalLeft),
-                                    top: px(finalTop),
-                                },
-                                { x: finalLeft + finalWidth / 2, y: finalTop + finalHeight / 2 },
-                            );
+                            ccLog('resizeEnd', { domId: el.domId, oid: el.oid, resizeTicks: resizeTicks.current, hasMovement: true });
+                            void persist({
+                                width: px(finalWidth),
+                                height: px(finalHeight),
+                                left: px(finalLeft),
+                                top: px(finalTop),
+                            });
                             debugLog('[CC-MOVEABLE] resizeEnd', {
                                 finalLeft: Math.round(finalLeft), finalTop: Math.round(finalTop),
                                 finalWidth: Math.round(finalWidth), finalHeight: Math.round(finalHeight),
@@ -401,12 +573,14 @@ export const MoveableSelectionLayer = observer(() => {
                             });
                         } else {
                             gesturing.current = false;
+                            ccLog('resizeEnd', { domId: el.domId, resizeTicks: resizeTicks.current, hasMovement: false });
                             void editorEngine.overlay.refresh();
                             debugLog('[CC-MOVEABLE] resizeEnd', { persisted: false });
                         }
                     }}
                 />
             )}
-        </div>
+            </div>
+        </RightClickMenu>
     );
 });

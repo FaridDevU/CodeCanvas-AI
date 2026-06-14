@@ -1,4 +1,5 @@
 import { useEditorEngine } from '@/components/store/editor';
+import { getActiveProject } from '@/lib/design-session';
 import type { PageNode } from '@onlook/models/pages';
 import { Button } from '@onlook/ui/button';
 import { Icons } from '@onlook/ui/icons';
@@ -20,6 +21,8 @@ export const PagesTab = observer(() => {
     const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
     const treeRef = useRef<TreeApi<PageNode>>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    // Page creation is only implemented for Next.js; hide the affordance for static HTML projects.
+    const isHtml = getActiveProject()?.framework === 'html';
 
     // TODO: use file system like code tab
     useEffect(() => {
@@ -110,7 +113,7 @@ export const PagesTab = observer(() => {
     const dimensions = useMemo(
         () => ({
             height: Math.max((height ?? 8) - 32, 100),
-            width: width ?? 365,
+            width: width ?? 232,
         }),
         [height, width],
     );
@@ -174,30 +177,29 @@ export const PagesTab = observer(() => {
                         </button>
                     )}
                 </div>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant={'default'}
-                            size={'icon'}
-                            className="text-foreground-primary border-border-primary hover:border-border-onlook bg-background-secondary hover:bg-background-onlook h-fit w-fit border p-2"
-                            onClick={() => setShowCreateModal(true)}
-                        >
-                            <Icons.Plus />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipPortal>
-                        <TooltipContent>
-                            <p>Create a new page</p>
-                        </TooltipContent>
-                    </TooltipPortal>
-                </Tooltip>
+                {!isHtml && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant={'default'}
+                                size={'icon'}
+                                className="text-foreground-primary border-border-primary hover:border-border-onlook bg-background-secondary hover:bg-background-onlook h-fit w-fit border p-2"
+                                onClick={() => setShowCreateModal(true)}
+                            >
+                                <Icons.Plus />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipPortal>
+                            <TooltipContent>
+                                <p>Create a new page</p>
+                            </TooltipContent>
+                        </TooltipPortal>
+                    </Tooltip>
+                )}
             </div>
 
             {filteredPages.length === 0 ? (
-                <div
-                    style={{ width: dimensions.width }}
-                    className="text-foreground-primary/50 flex h-32 items-center justify-center"
-                >
+                <div className="text-foreground-primary/50 flex h-32 w-full items-center justify-center px-4 text-center">
                     No pages found
                 </div>
             ) : (

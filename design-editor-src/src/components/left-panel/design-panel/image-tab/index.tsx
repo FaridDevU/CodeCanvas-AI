@@ -2,15 +2,13 @@
 
 import { observer } from 'mobx-react-lite';
 
-import type { ImageMessageContext } from '@onlook/models/chat';
-import { MessageContextType } from '@onlook/models/chat';
 import { Icons } from '@onlook/ui/icons';
 import { toast } from '@onlook/ui/sonner';
-import { convertToBase64DataUrl, getMimeType } from '@onlook/utility';
 
 import { useEditorEngine } from '@/components/store/editor';
 import { BreadcrumbNavigation } from './breadcrumb-navigation';
 import { FolderList } from './folder-list';
+import { useAssetUsage } from './hooks/use-asset-usage';
 import { useImageOperations } from './hooks/use-image-operations';
 import { useNavigation } from './hooks/use-navigation';
 import { ImageGrid } from './image-grid';
@@ -21,7 +19,8 @@ export const ImagesTab = observer(() => {
     const projectId = editorEngine.projectId;
     const branchId = editorEngine.branches.activeBranch.id;
 
-    // Navigation state and handlers
+    // Navigation state and handlers. Start at the project root: a static HTML project has no
+    // `public/` folder, so the user browses real folders (assets, images, ...) from the top.
     const {
         activeFolder,
         search,
@@ -30,7 +29,7 @@ export const ImagesTab = observer(() => {
         navigateToFolder,
         handleFolderClick,
         filterImages,
-    } = useNavigation();
+    } = useNavigation('/');
 
     // Get the CodeEditorApi for the active branch
     const branchData = editorEngine.branches.getBranchDataById(
@@ -51,6 +50,14 @@ export const ImagesTab = observer(() => {
 
     // Filter images based on search
     const images = filterImages(allImages);
+
+    // Which assets are still referenced by the project's markup/source (project-wide, so it doesn't
+    // depend on the folder being browsed). Keyed by project so it scans once per project rather than on
+    // every folder navigation; reopening the tab re-scans. Read-only — never deletes anything.
+    const { referencedNames, ready: usageReady } = useAssetUsage(projectId);
+    const unusedCount = usageReady
+        ? allImages.filter((i) => !referencedNames.has(i.name.toLowerCase())).length
+        : 0;
 
     // Handler functions with error handling and feedback
     const handleRenameWithFeedback = async (oldPath: string, newName: string) => {
@@ -79,37 +86,6 @@ export const ImagesTab = observer(() => {
         }
     };
 
-    const handleAddToChat = async (imagePath: string) => {
-        try {
-            const fileName = imagePath.split('/').pop() || imagePath;
-            const mimeType = getMimeType(fileName);
-
-            // Load the actual image file content
-            const fileContent = await branchData?.codeEditor.readFile(imagePath);
-            if (!fileContent) {
-                throw new Error('Failed to load image file');
-            }
-
-            const base64Content = convertToBase64DataUrl(fileContent, mimeType);
-
-            const imageContext: ImageMessageContext = {
-                type: MessageContextType.IMAGE,
-                source: 'local',
-                path: imagePath,
-                branchId: branchId,
-                content: base64Content,
-                displayName: fileName,
-                mimeType: mimeType,
-            };
-
-            editorEngine.chat.context.addContexts([imageContext]);
-            toast.success('Image added to chat');
-        } catch (error) {
-            console.error('Failed to add image to chat:', error);
-            toast.error('Failed to add image to chat');
-        }
-    };
-
     if (loading) {
         return (
             <div className="flex h-full w-full items-center justify-center gap-2">
@@ -129,6 +105,20 @@ export const ImagesTab = observer(() => {
 
     return (
         <div className="flex h-full w-full flex-col gap-3 p-3">
+            {/* Make it explicit this is the project's file library, not "what's on the canvas". Deleting
+                an image from the canvas does NOT remove the file here, and vice versa. */}
+            <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium text-foreground-primary">Biblioteca de assets</span>
+                <span className="text-[11px] leading-tight text-foreground-tertiary">
+                    Archivos del proyecto. Eliminar del lienzo no borra el archivo; usa el menú para borrarlo aquí.
+                </span>
+                {usageReady && unusedCount > 0 && (
+                    <span className="text-[11px] leading-tight text-amber-500">
+                        {unusedCount} sin usar (no referenciados en el código). Revisa y bórralos con el menú si quieres.
+                    </span>
+                )}
+            </div>
+
             <SearchUploadBar
                 search={search}
                 setSearch={setSearch}
@@ -148,10 +138,11 @@ export const ImagesTab = observer(() => {
                 projectId={projectId}
                 branchId={branchId}
                 search={search}
+                referencedNames={referencedNames}
+                usageReady={usageReady}
                 onUpload={handleUpload}
                 onRename={handleRenameWithFeedback}
                 onDelete={handleDeleteWithFeedback}
-                onAddToChat={handleAddToChat}
             />
         </div>
     );

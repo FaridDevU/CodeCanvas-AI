@@ -1,6 +1,6 @@
 'use client';
 
-import { useFile } from '@onlook/file-system/hooks';
+import { useWorkbenchFile } from '@/lib/workbench-fs-hooks';
 import type { ImageContentData } from '@onlook/models';
 import {
     AlertDialog,
@@ -39,11 +39,11 @@ interface ImageItemProps {
     onImageMouseUp: () => void;
     onRename: (oldPath: string, newName: string) => Promise<void>;
     onDelete: (filePath: string) => Promise<void>;
-    onAddToChat: (imagePath: string) => void;
+    unused?: boolean;
 }
 
-export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImageDragEnd, onImageMouseDown, onImageMouseUp, onRename, onDelete, onAddToChat }: ImageItemProps) => {
-    const { content, loading } = useFile(projectId, branchId, image.path);
+export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImageDragEnd, onImageMouseDown, onImageMouseUp, onRename, onDelete, unused }: ImageItemProps) => {
+    const { content, loading } = useWorkbenchFile(image.path);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [isDisabled, setIsDisabled] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
@@ -115,9 +115,11 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
             return;
         }
 
+        // Leave content empty on purpose: the write-back (saveAsset) reads the real bytes from
+        // `originPath` on disk, which avoids shipping a large/garbled blob through the drag payload.
         const imageContentData: ImageContentData = {
             fileName: image.name,
-            content: content as string,
+            content: '',
             mimeType: getMimeType(image.name),
             originPath: image.path,
         };
@@ -153,11 +155,6 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
         }
     };
 
-    const handleAddToChat = () => {
-        onAddToChat(image.path);
-        setDropdownOpen(false);
-    };
-
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             void handleRename();
@@ -170,7 +167,8 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
     return (
         <div className="group">
             <div
-                className="aspect-square bg-background-secondary rounded-md border border-border-primary overflow-hidden cursor-pointer hover:border-border-onlook transition-colors relative"
+                className="aspect-square bg-background-secondary rounded-md border border-border-primary overflow-hidden cursor-grab active:cursor-grabbing hover:border-border-onlook transition-colors relative"
+                draggable={!isDisabled}
                 onDragStart={handleDragStart}
                 onDragEnd={onImageDragEnd}
                 onDragOver={(e) => {
@@ -186,6 +184,7 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
                 {isVideo ? (
                     <video
                         src={imageUrl}
+                        draggable={false}
                         className="w-full h-full object-cover"
                         muted
                         loop
@@ -201,9 +200,20 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
                     <img
                         src={imageUrl}
                         alt={image.name}
+                        draggable={false}
                         className="w-full h-full object-cover"
                         loading="lazy"
                     />
+                )}
+
+                {/* Unused marker: this file isn't referenced by any scanned markup/source file. */}
+                {unused && (
+                    <div
+                        className="absolute top-2 left-2 rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium text-black"
+                        title="No referenciado en el código del proyecto"
+                    >
+                        Sin usar
+                    </div>
                 )}
 
                 {/* Action menu */}
@@ -224,17 +234,6 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
-                                <DropdownMenuItem
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleAddToChat();
-                                    }}
-                                    className="flex items-center gap-2"
-                                >
-                                    <Icons.Plus className="h-3 w-3" />
-                                    Add to Chat
-                                </DropdownMenuItem>
                                 <DropdownMenuItem
                                     onClick={(e) => {
                                         e.preventDefault();

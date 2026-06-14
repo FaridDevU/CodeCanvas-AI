@@ -23,10 +23,10 @@ import { canHaveBackgroundImage, createDomId, createOid, isVideoFile, urlToRelat
 import type React from 'react';
 import { toast } from '@onlook/ui/sonner';
 import { getActiveProject } from '@/lib/design-session';
-import { applyHtmlAttrEdit, assetSrcForPage, pageFileForPathname, saveAsset } from '@/lib/html-writeback';
+import { applyHtmlAttrEdit, assetSrcForPage, CC_CREATED_ATTR, CC_CREATED_VALUE, pageFileForPathname, saveAsset } from '@/lib/html-writeback';
 import type { EditorEngine } from '../engine';
 import type { FrameData } from '../frames';
-import { getRelativeMousePositionToFrameView } from '../overlay/utils';
+import { getRelativeClientPositionToFrameView, getRelativeMousePositionToFrameView } from '../overlay/utils';
 
 export class InsertManager {
     isDrawing = false;
@@ -95,11 +95,36 @@ export class InsertManager {
             console.error('frameView not found');
             return;
         }
-        const currentPos = { x: e.clientX, y: e.clientY };
-        const newRect = this.getDrawRect(currentPos);
+        // The on-screen draw overlay lives in client/screen coordinates, but the inserted element
+        // must be positioned in the iframe's own CSS-pixel space. Convert BOTH the draw origin
+        // (mouse-down corner) and the mouse-up corner to frame coordinates, then build a normalized
+        // rect from them. This fixes two coordinate-system bugs at once:
+        //   - left/top now come from the rect's top-left corner, not the mouse-up point (which is the
+        //     bottom-right corner when you drag down-right), so text lands where it was drawn.
+        //   - width/height are now in frame px (already divided by scale) instead of raw screen px,
+        //     so the box size matches the drawn rectangle at any zoom level.
+        const startFrame = this.drawOrigin
+            ? getRelativeClientPositionToFrameView(this.drawOrigin.x, this.drawOrigin.y, frameView)
+            : getRelativeClientPositionToFrameView(e.clientX, e.clientY, frameView);
+        const endFrame = getRelativeClientPositionToFrameView(e.clientX, e.clientY, frameView);
+        const frameRect: RectDimensions = {
+            left: Math.min(startFrame.x, endFrame.x),
+            top: Math.min(startFrame.y, endFrame.y),
+            width: Math.abs(endFrame.x - startFrame.x),
+            height: Math.abs(endFrame.y - startFrame.y),
+        };
 
+        // origin (mouse-up in frame coords) is still used to resolve the flow insert location for
+        // non-HTML projects; for HTML the insert is re-anchored to <body> using frameRect.
         const origin = getRelativeMousePositionToFrameView(e, frameView);
-        await this.insertElement(frameView, newRect, origin);
+        debugLog('[CC-INSERT-TEXT] end gesture', {
+            pointerScreen: { x: e.clientX, y: e.clientY },
+            drawOriginScreen: this.drawOrigin,
+            startFrame,
+            endFrame,
+            frameRect,
+        });
+        await this.insertElement(frameView, frameRect, origin);
         this.drawOrigin = undefined;
         this.editorEngine.state.editorMode = EditorMode.DESIGN;
         // The insert tool is one-shot: clear it so the next click selects again.
@@ -218,13 +243,24 @@ export class InsertManager {
         // Static HTML: insert absolute and anchored to <body> at the draw point so the element
         // actually appears where the user drew it (a flow insert lands at the end of <body>, off
         // screen and, for empty text, invisible). Same model as inserted media; freely movable after.
+        // left/top come from newRect's TOP-LEFT corner (already in frame coords), NOT the mouse-up
+        // point, so a dragged box and a simple click both anchor at the gesture's top-left.
         let effectiveLocation = location;
         if (this.isHtmlProject()) {
             styles.position = 'absolute';
-            styles.left = `${Math.max(0, Math.round(origin.x))}px`;
-            styles.top = `${Math.max(0, Math.round(origin.y))}px`;
+            styles.left = `${Math.max(0, Math.round(newRect.left))}px`;
+            styles.top = `${Math.max(0, Math.round(newRect.top))}px`;
             effectiveLocation = { type: 'append', targetDomId: '', targetOid: null };
         }
+
+        debugLog('[CC-INSERT-TEXT] createInsertAction', {
+            isText,
+            isHtml: this.isHtmlProject(),
+            originFrame: origin,
+            newRectFrame: newRect,
+            computed: { left: styles.left, top: styles.top, width: styles.width, height: styles.height },
+            finalStyles: styles,
+        });
 
         // Empty <p> renders as nothing, so give inserted text visible placeholder content. If inline
         // editing engages the user types over it; otherwise it stays visible and editable.
@@ -239,6 +275,8 @@ export class InsertManager {
                 [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
                 [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
                 [EditorAttributes.DATA_ONLOOK_ID]: oid,
+                // Persistent marker so Design can offer free move/resize on this inserted box/text.
+                [CC_CREATED_ATTR]: CC_CREATED_VALUE,
             },
             children: [],
             textContent,
@@ -457,6 +495,8 @@ export class InsertManager {
             [EditorAttributes.DATA_ONLOOK_ID]: oid,
             [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
             [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
+            // Persistent marker so Design can offer free move/resize on this inserted image/video.
+            [CC_CREATED_ATTR]: CC_CREATED_VALUE,
             src,
         };
 
@@ -629,6 +669,8 @@ export class InsertManager {
                 [EditorAttributes.DATA_ONLOOK_ID]: oid,
                 [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
                 [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
+                // Persistent marker so Design can offer free move/resize on this inserted element.
+                [CC_CREATED_ATTR]: CC_CREATED_VALUE,
             },
             textContent: properties.textContent || null,
         };

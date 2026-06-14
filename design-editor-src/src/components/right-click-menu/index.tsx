@@ -14,10 +14,19 @@ import { Kbd } from '@onlook/ui/kbd';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { isWorkbenchChatAvailable, sendToWorkbenchChat } from '@/lib/workbench-chat';
+import { getActiveProject } from '@/lib/design-session';
 
 interface RightClickMenuProps {
     children: React.ReactNode;
 }
+
+// Tags whose text content can be edited in place (and persisted via applyHtmlTextEdit). "Edit text"
+// is only offered for these; never for <img>/<video>/containers.
+const TEXT_TAGS = new Set([
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'a', 'strong', 'b', 'em', 'i', 'mark', 'code',
+    'small', 'blockquote', 'pre', 'time', 'sub', 'sup', 'del', 'ins', 'u', 'abbr', 'cite', 'q',
+    'label', 'li', 'td', 'th', 'figcaption', 'button', 'caption', 'dt', 'dd',
+]);
 
 interface MenuItem {
     label: string;
@@ -119,12 +128,58 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         },
     ];
 
+    // Static HTML only persists a subset of ops, so we don't surface actions that wouldn't work.
+    // Supported today: update-style, edit-text (text tags only), remove-element, plus Copilot.
+    // Not yet: group/ungroup, copy/paste/cut, duplicate, and oid->source navigation (no JSX map).
+    const isHtml = getActiveProject()?.framework === 'html';
+
+    const getHtmlMenuItems = (element: DomElement | undefined): MenuItem[][] => {
+        const tag = (element?.tagName || '').toLowerCase();
+        const isText = TEXT_TAGS.has(tag);
+
+        const primary: MenuItem[] = chatAvailable ? [askCopilotItem] : [];
+
+        const editing: MenuItem[] = [];
+        // Original flow elements (hero/card/div/text) are NOT freely movable until the user opts them
+        // in. This converts the selected one to absolute editing (left/top/width/height pinned in
+        // place) so Moveable can take over — without corrupting the rest of the layout.
+        if (editorEngine.elements.selectedCanConvertToEditable) {
+            editing.push({
+                label: 'Convertir a edición libre',
+                action: () => void editorEngine.elements.convertSelectedToEditable(),
+                icon: <Icons.Box className="mr-2 h-4 w-4" />,
+            });
+        }
+        if (isText) {
+            editing.push({
+                label: 'Editar texto',
+                action: () => editorEngine.text.editSelectedElement(),
+                icon: <Icons.Pencil className="mr-2 h-4 w-4" />,
+                hotkey: Hotkey.ENTER,
+            });
+        }
+        editing.push({
+            label: 'Eliminar',
+            action: () => editorEngine.elements.delete(),
+            icon: <Icons.Trash className="mr-2 h-4 w-4" />,
+            hotkey: Hotkey.DELETE,
+            destructive: true,
+        });
+
+        return primary.length ? [primary, editing] : [editing];
+    };
+
     const getMenuItems = (): MenuItem[][] => {
         if (!editorEngine.elements.selected.length) {
             return chatAvailable ? [[askCopilotItem], WINDOW_ITEMS] : [WINDOW_ITEMS];
         }
 
         const element: DomElement | undefined = editorEngine.elements.selected[0];
+
+        if (isHtml) {
+            return getHtmlMenuItems(element);
+        }
+
         const instance = element?.instanceId || null;
         const root = element?.oid || null;
 
@@ -154,9 +209,12 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
     const menuItems: MenuItem[][] = getMenuItems();
 
     return (
-        <ContextMenu>
+        <ContextMenu onOpenChange={(open) => { editorEngine.state.rightClickMenuOpen = open; }}>
             <ContextMenuTrigger>{children}</ContextMenuTrigger>
-            <ContextMenuContent className="w-64 bg-background/95 backdrop-blur-lg">
+            {/* z-[10000] keeps the menu above the Moveable control box/handles (react-moveable uses
+                z-index:3000). The menu portals to body but the canvas container isn't a stacking
+                context, so Moveable's 3000 would otherwise paint over the menu's default z-50. */}
+            <ContextMenuContent className="z-[10000] w-64 bg-background/95 backdrop-blur-lg">
                 {menuItems.map((group, groupIndex) => (
                     <div key={groupIndex}>
                         {group.map((item) => (

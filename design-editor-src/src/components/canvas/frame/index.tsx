@@ -11,7 +11,7 @@ import { ResizeHandles } from './resize-handles';
 import { TopBar } from './top-bar';
 import { useFrameReload } from './use-frame-reload';
 import { useSandboxTimeout } from './use-sandbox-timeout';
-import { FrameComponent, type IFrameView } from './view';
+import { FrameComponent, type FrameConnectionDiagnostic, type IFrameView } from './view';
 
 const LOADING_MESSAGES = [
     'Starting up your project...',
@@ -44,6 +44,10 @@ export const FrameView = observer(({ frame, isInDragSelection = false }: { frame
     const iFrameRef = useRef<IFrameView>(null);
     const [isResizing, setIsResizing] = useState(false);
     const [messageIndex, setMessageIndex] = useState(0);
+    const [diagnostic, setDiagnostic] = useState<FrameConnectionDiagnostic>({
+        connected: false,
+        label: 'Construyendo editor visual...',
+    });
     const MESSAGE_INTERVAL = 12000;
 
     const {
@@ -86,9 +90,9 @@ export const FrameView = observer(({ frame, isInDragSelection = false }: { frame
                 className="relative"
                 style={{
                     outline: isSelected
-                        ? `2px solid ${colors.teal[400]}`
+                        ? `1.5px solid ${colors.teal[400]}`
                         : isInDragSelection
-                            ? `2px solid ${colors.teal[500]}`
+                            ? `1.5px solid ${colors.teal[500]}`
                             : 'none',
                     borderRadius: '4px',
                 }}
@@ -100,11 +104,28 @@ export const FrameView = observer(({ frame, isInDragSelection = false }: { frame
                     reloadIframe={immediateReload}
                     onConnectionFailed={handleConnectionFailed}
                     onConnectionSuccess={handleConnectionSuccess}
+                    onDiagnostic={setDiagnostic}
                     penpalTimeoutMs={getPenpalTimeout()}
                     isInDragSelection={isInDragSelection}
                     ref={iFrameRef}
                 />
                 <GestureScreen frame={frame} isResizing={isResizing} />
+
+                {/* Live connection status from FrameComponent: shows the real stage (building proxy,
+                    page loaded, preload executed, connecting, error, timeout) so a stuck editor is
+                    diagnosable WITHOUT the webview DevTools. Hidden once connected. */}
+                {isFrameReady && !diagnostic.connected && (
+                    <div
+                        className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 rounded-md bg-background/90 border border-border px-2 py-1 text-foreground-secondary pointer-events-none"
+                        style={{
+                            transform: `translateX(-50%) scale(${1 / editorEngine.canvas.scale})`,
+                            transformOrigin: 'top center',
+                        }}
+                    >
+                        <Icons.ExclamationTriangle className="h-3.5 w-3.5 text-amber-400" />
+                        <span className="text-xs whitespace-nowrap">{diagnostic.label}</span>
+                    </div>
+                )}
 
                 {!isFrameReady && (
                     <div

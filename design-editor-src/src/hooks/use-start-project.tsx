@@ -45,7 +45,7 @@ export const useStartProject = () => {
                 // Connect the local code provider for the chosen project. This kicks off
                 // the whole pipeline: sync to the editor fs, oid instrumentation, preload
                 // script injection and the code index (write-back from the canvas).
-                setActiveProject({ rootPath: app.rootPath, framework: app.framework });
+                setActiveProject({ rootPath: app.rootPath, framework: app.framework, pages: app.pages });
                 void sandbox?.session.start('local-sandbox').catch((err) => {
                     console.warn('[useStartProject] Local provider failed; canvas stays read-only:', err);
                 });

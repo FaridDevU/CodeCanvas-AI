@@ -2,9 +2,10 @@
 
 import React, { memo } from 'react';
 import { Border } from './dropdowns/border';
-import { ColorBackground } from './dropdowns/color-background';
 import { Height } from './dropdowns/height';
+import { ImgFit } from './dropdowns/img-fit';
 import { Margin } from './dropdowns/margin';
+import { Opacity } from './dropdowns/opacity';
 import { Padding } from './dropdowns/padding';
 import { Radius } from './dropdowns/radius';
 import { Width } from './dropdowns/width';
@@ -13,28 +14,30 @@ import { useMeasureGroup } from './hooks/use-measure-group';
 import { OverflowMenu } from './overflow-menu';
 import { InputSeparator } from './separator';
 
-// Group definitions for the img-selected toolbar
+// Group definitions for the img/video-selected toolbar. Only controls that persist via inline-style
+// write-back (applyHtmlStyleEdit): object-fit, border/radius, opacity, spacing and dimensions. No
+// text/typography controls here — those don't apply to media.
 export const IMG_SELECTED_GROUPS = [
+    {
+        key: 'image',
+        label: 'Image',
+        components: [<ImgFit />],
+    },
     {
         key: 'base',
         label: 'Base',
-        components: [<ColorBackground />, <Border />, <Radius />],
+        components: [<Border />, <Radius />],
+    },
+    {
+        key: 'opacity',
+        label: 'Opacity',
+        components: [<Opacity />],
     },
     {
         key: 'layout',
         label: 'Layout',
         components: [<Padding />, <Margin />],
     },
-    // {
-    //     key: 'image',
-    //     label: 'Image',
-    //     components: [<ImgFit />, <ImageBackground />],
-    // },
-    // {
-    //     key: 'opacity',
-    //     label: 'Opacity',
-    //     components: [<Opacity />],
-    // },
 ];
 
 const MUST_EXTEND_GROUPS = [

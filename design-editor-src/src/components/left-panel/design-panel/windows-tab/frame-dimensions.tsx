@@ -114,7 +114,7 @@ export const FrameDimensions = observer(({ frameId }: { frameId: string }) => {
                                         ))}
                                     </SelectGroup>
                                     {index < Object.entries(DEVICE_OPTIONS).length - 1 && (
-                                        <SelectSeparator className="text-white" />
+                                        <SelectSeparator className="bg-border" />
                                     )}
                                 </React.Fragment>
                             ) : (

@@ -9,6 +9,16 @@ import {
 import { debounce } from 'lodash';
 import { makeAutoObservable } from 'mobx';
 
+const FRAMES_VISIBLE_KEY = 'codecanvas.design.framesVisible';
+
+function loadFramesVisible(): boolean {
+    try {
+        return localStorage.getItem(FRAMES_VISIBLE_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
 export class StateManager {
     private _canvasScrolling = false;
     hotkeysOpen = false;
@@ -16,6 +26,13 @@ export class StateManager {
     leftPanelLocked = false;
     canvasPanning = false;
     isDragSelecting = false;
+    // True while a right-click context menu is open, so the Moveable layer can hide its handles
+    // (which otherwise paint over the menu and could intercept clicks meant for it).
+    rightClickMenuOpen = false;
+
+    // Whether the cosmetic device frames are drawn around the preview. Persisted locally so the
+    // designer's preference survives reloads. Toggling never changes the logical viewport size.
+    framesVisible = loadFramesVisible();
 
     editorMode: EditorMode = EditorMode.DESIGN;
     insertMode: InsertMode | null = null;
@@ -28,6 +45,15 @@ export class StateManager {
 
     constructor() {
         makeAutoObservable(this);
+    }
+
+    toggleFramesVisible() {
+        this.framesVisible = !this.framesVisible;
+        try {
+            localStorage.setItem(FRAMES_VISIBLE_KEY, String(this.framesVisible));
+        } catch {
+            /* ignore: persistence is best-effort */
+        }
     }
 
     set canvasScrolling(value: boolean) {

@@ -1,4 +1,5 @@
 import { debugLog } from '@/lib/debug';
+import { getActiveProject } from '@/lib/design-session';
 import { useEditorEngine } from '@/components/store/editor';
 import { Icons } from '@onlook/ui/icons';
 import type { LayerNode } from '@onlook/models/element';
@@ -131,20 +132,27 @@ export const LayersTab = observer(() => {
     );
 
     const layers = editorEngine.ast.mappings.filteredLayers;
+    // Static HTML has no JSX/oid layer pipeline, so the tree is either empty or a degenerate dark blob
+    // that just covers the canvas. Until a real DOM-based tree exists, force a clear, visible message
+    // for HTML projects (and for any genuinely empty tree).
+    const isHtml = getActiveProject()?.framework === 'html';
     const isEmpty = !layers || layers.length === 0;
-    debugLog('[CC-LAYERS] render', { count: layers?.length ?? 0, isEmpty, measuredHeight: height, measuredWidth: width });
+    debugLog('[CC-LAYERS] render', { count: layers?.length ?? 0, isEmpty, isHtml, measuredHeight: height, measuredWidth: width });
 
-    if (isEmpty) {
-        // An empty tree used to render a blank 280px panel that just covered the canvas. Show a
-        // clear hint instead so it's obvious there's nothing to list (and why).
+    if (isHtml || isEmpty) {
         return (
             <div
                 ref={ref}
-                className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-foreground-tertiary"
+                className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center"
             >
-                <Icons.Layers className="h-5 w-5 opacity-60" />
-                <p>No hay capas para mostrar todavía.</p>
-                <p className="opacity-70">Selecciona un elemento en el lienzo para verlo aquí.</p>
+                <Icons.Layers className="h-8 w-8 text-foreground-secondary opacity-80" />
+                <p className="text-sm font-medium text-foreground-primary">Árbol de capas no disponible</p>
+                <p className="text-xs text-foreground-secondary">
+                    Los proyectos HTML todavía no muestran un árbol de capas aquí.
+                </p>
+                <p className="text-xs text-foreground-tertiary">
+                    Haz clic en un elemento del lienzo para seleccionarlo y editarlo directamente.
+                </p>
             </div>
         );
     }

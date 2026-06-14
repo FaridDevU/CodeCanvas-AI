@@ -26,11 +26,26 @@ export class OverlayManager {
         );
     }
 
+    // Bumped on every refresh. Since the body awaits (penpal round-trips), and refresh() is triggered
+    // from several places after a gesture (persist + window-mutation + dom-processed), two runs can
+    // overlap. Without a guard each one does removeClickRects()+addClickRect() AFTER its await, so an
+    // older run can append a SECOND (stale) set of click rects on top of the newer one. That left ghost
+    // outlines in old positions AND unmounted Moveable (its gate requires exactly one click rect). The
+    // sequence guard makes only the most recent run commit.
+    private refreshSeq = 0;
+
     undebouncedRefresh = async () => {
+        const seq = ++this.refreshSeq;
         this.state.removeHoverRect();
 
-        // Refresh click rects
-        const newClickRects: { rect: RectDimensions; styles: DomElementStyles | null }[] = [];
+        // Refresh click rects. Keep domId + isComponent so the rebuilt rect preserves its identity
+        // (stable React key = no remount flicker) and its component styling.
+        const newClickRects: {
+            rect: RectDimensions;
+            styles: DomElementStyles | null;
+            isComponent: boolean;
+            domId: string;
+        }[] = [];
         for (const selectedElement of this.editorEngine.elements.selected) {
             const frameData = this.editorEngine.frames.get(selectedElement.frameId);
             if (!frameData) {
@@ -48,12 +63,20 @@ export class OverlayManager {
                 continue;
             }
             const adaptedRect = adaptRectToCanvas(el.rect, view);
-            newClickRects.push({ rect: adaptedRect, styles: el.styles });
+            newClickRects.push({
+                rect: adaptedRect,
+                styles: el.styles,
+                isComponent: !!el.instanceId,
+                domId: el.domId,
+            });
         }
+
+        // A newer refresh started while we awaited: let it own the commit (avoid duplicate rects).
+        if (seq !== this.refreshSeq) return;
 
         this.state.removeClickRects();
         for (const clickRect of newClickRects) {
-            this.state.addClickRect(clickRect.rect, clickRect.styles);
+            this.state.addClickRect(clickRect.rect, clickRect.styles, clickRect.isComponent, clickRect.domId);
         }
 
         // Refresh text editor position if it's active

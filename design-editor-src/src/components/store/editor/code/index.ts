@@ -1,9 +1,13 @@
 import { type Action, type CodeDiffRequest, type FileToRequests } from '@onlook/models';
+import type { StyleChange } from '@onlook/models/style';
+import { StyleChangeType } from '@onlook/models/style';
 import { toast } from '@onlook/ui/sonner';
 import { assertNever } from '@onlook/utility';
 import { makeAutoObservable } from 'mobx';
 
 import { type EditorEngine } from '@/components/store/editor/engine';
+import { getActiveProject } from '@/lib/design-session';
+import { applyHtmlInsert, applyHtmlMove, applyHtmlRemove, applyHtmlStyleEdit, applyHtmlTextEdit, pageFileForPathname } from '@/lib/html-writeback';
 import {
     getEditTextRequests,
     getGroupRequests,
@@ -23,8 +27,140 @@ export class CodeManager {
         makeAutoObservable(this);
     }
 
+    private isHtmlProject(): boolean {
+        return getActiveProject()?.framework === 'html';
+    }
+
+    /** Resolves the source HTML file for the page shown in a given frame. */
+    private pageFileForFrame(frameId: string): string {
+        const frame = this.editorEngine.frames.get(frameId)?.frame;
+        let pathname = '/';
+        try {
+            if (frame?.url) pathname = new URL(frame.url).pathname;
+        } catch {
+            /* keep default */
+        }
+        return pageFileForPathname(pathname);
+    }
+
+    // Throttle the "not saved yet" notice so a burst of unsupported actions doesn't spam toasts.
+    private lastUnsupportedNotice = 0;
+
+    private notifyNotSaved(message: string) {
+        const now = Date.now();
+        if (now - this.lastUnsupportedNotice < 4000) return;
+        this.lastUnsupportedNotice = now;
+        toast.warning(message);
+    }
+
+    /**
+     * Static-HTML persistence. Reflects edits into the real .html source (Code panel updates too),
+     * replacing the JSX/oid pipeline which cannot work without build-time Onlook ids. The DOM change
+     * was already applied by the ActionManager, so the canvas still updates visually; here we persist
+     * the supported ops and warn (non-blocking) for the ones that don't write to HTML yet.
+     */
+    private async writeHtml(action: Action): Promise<void> {
+        switch (action.type) {
+            case 'update-style': {
+                for (const target of action.targets) {
+                    const pageFile = this.pageFileForFrame(target.frameId);
+                    const styleUpdates: Record<string, { value: string; remove?: boolean }> = {};
+                    for (const [prop, change] of Object.entries(target.change.updated as Record<string, StyleChange>)) {
+                        styleUpdates[prop] = {
+                            value: change.value,
+                            remove: change.type === StyleChangeType.Remove,
+                        };
+                    }
+                    await applyHtmlStyleEdit(target.oid, styleUpdates, pageFile);
+                }
+                break;
+            }
+            case 'edit-text': {
+                for (const target of action.targets) {
+                    const pageFile = this.pageFileForFrame(target.frameId);
+                    const result = await applyHtmlTextEdit(target.oid, action.newContent, pageFile);
+                    if (!result.ok && result.reason === 'has-children') {
+                        this.notifyNotSaved('No se guardo el texto: el elemento tiene contenido interno (icono, span...).');
+                    }
+                }
+                break;
+            }
+            // Image/video/element drops: write the new element into the source HTML, then reload
+            // the frame so it appears (Onlook's live DOM insert is disabled). Fallback to a warning
+            // if the write fails.
+            case 'insert-element': {
+                const target = action.targets[0];
+                if (!target) break;
+                const pageFile = this.pageFileForFrame(target.frameId);
+                const el = action.element;
+                const result = await applyHtmlInsert(
+                    {
+                        tagName: el.tagName,
+                        attributes: el.attributes,
+                        styles: el.styles,
+                        textContent: el.textContent,
+                    },
+                    action.location,
+                    pageFile,
+                );
+                if (result.ok) {
+                    this.reloadFrame(target.frameId);
+                } else {
+                    this.notifyNotSaved('No se pudo guardar el elemento en el HTML.');
+                }
+                break;
+            }
+            // Remove / move: persist to the source and reload so the canvas matches.
+            case 'remove-element': {
+                const target = action.targets[0];
+                if (!target) break;
+                const pageFile = this.pageFileForFrame(target.frameId);
+                const result = await applyHtmlRemove(target.oid, pageFile);
+                if (result.ok) this.reloadFrame(target.frameId);
+                else this.notifyNotSaved('No se pudo borrar el elemento en el HTML.');
+                break;
+            }
+            case 'move-element': {
+                const target = action.targets[0];
+                if (!target) break;
+                const pageFile = this.pageFileForFrame(target.frameId);
+                const result = await applyHtmlMove(target.oid, action.location, pageFile);
+                if (result.ok) {
+                    if (result.changed !== false) this.reloadFrame(target.frameId);
+                } else {
+                    this.notifyNotSaved('No se pudo mover el elemento en el HTML.');
+                }
+                break;
+            }
+            // Still unsupported structural ops. Don't fail silently: the canvas changes but the file
+            // does not, so warn (non-blocking) that it isn't saved.
+            // Note: media drop/swap/background use insert-element / update-style (both handled), not
+            // 'insert-image'/'remove-image' (those only exist as undo/redo inverses and are never
+            // dispatched), so they are intentionally NOT in this list.
+            case 'group-elements':
+            case 'ungroup-elements':
+                this.notifyNotSaved('Esta accion todavia no se guarda en el HTML.');
+                break;
+            default:
+                console.log('[html-writeback] action not persisted for static HTML:', action.type);
+        }
+    }
+
+    /** Reloads a frame's iframe so a structural HTML change becomes visible. */
+    private reloadFrame(frameId: string) {
+        try {
+            this.editorEngine.frames.get(frameId)?.view?.reload();
+        } catch (err) {
+            console.warn('[html-writeback] failed to reload frame', frameId, err);
+        }
+    }
+
     async write(action: Action) {
         try {
+            if (this.isHtmlProject()) {
+                await this.writeHtml(action);
+                return;
+            }
             // TODO: This is a hack to write code, we should refactor this
             if (action.type === 'write-code' && action.diffs[0]) {
                 // Write-code actions don't have branch context, use active editor

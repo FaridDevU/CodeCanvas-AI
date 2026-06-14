@@ -148,7 +148,7 @@ export const OverlayChatInput = observer(({
                             onClick={handleSubmit}
                             className={cn(
                                 'absolute right-0.5 bottom-0.5 h-7 w-7',
-                                'bg-foreground-primary text-white hover:bg-foreground-hover',
+                                'bg-foreground-primary text-background hover:bg-foreground-hover',
                             )}
                             disabled={inputState.isSubmitting}
                         >

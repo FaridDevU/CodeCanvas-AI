@@ -164,7 +164,10 @@ export class FramesManager {
         }
 
         try {
-            const currentUrl = frameData.view.src;
+            // Use the frame's logical URL (the dev/static server origin), NOT view.src: the iframe
+            // src is the proxied blob: URL, whose origin is not the server. Changing frame.url makes
+            // the inspector proxy re-fetch the new page.
+            const currentUrl = frameData.frame.url;
             const baseUrl = currentUrl ? new URL(currentUrl).origin : null;
 
             if (!baseUrl) {

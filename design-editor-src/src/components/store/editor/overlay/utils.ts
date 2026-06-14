@@ -81,10 +81,14 @@ export function adaptValueToCanvas(value: number, inverse = false): number {
 }
 
 /**
- * Get the relative mouse position a frameView element inside the canvas container.
+ * Convert a raw screen/client point (clientX, clientY) into frame-content coordinates.
+ * Subtracting the frameView's bounding rect already folds in canvas pan, the frame's offset
+ * and any canvas scroll; dividing by the canvas scale removes the zoom. The result is in the
+ * iframe's own CSS pixel space, i.e. the left/top a position:absolute child would need.
  */
-export function getRelativeMousePositionToFrameView(
-    e: React.MouseEvent<HTMLDivElement>,
+export function getRelativeClientPositionToFrameView(
+    clientX: number,
+    clientY: number,
     frameView: IFrameView,
     inverse: boolean = false,
 ): ElementPosition {
@@ -92,7 +96,7 @@ export function getRelativeMousePositionToFrameView(
     const canvasContainer = document.getElementById(EditorAttributes.CANVAS_CONTAINER_ID);
     if (!canvasContainer) {
         console.error('Canvas container not found');
-        return rect satisfies ElementPosition;
+        return { x: clientX, y: clientY } satisfies ElementPosition;
     }
 
     // Get canvas transform matrix to handle scaling and translation
@@ -100,7 +104,18 @@ export function getRelativeMousePositionToFrameView(
 
     const scale = inverse ? 1 / canvasTransform.a : canvasTransform.a; // Get scale from transform matrix
 
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    const x = (clientX - rect.left) / scale;
+    const y = (clientY - rect.top) / scale;
     return { x, y } satisfies ElementPosition;
+}
+
+/**
+ * Get the relative mouse position a frameView element inside the canvas container.
+ */
+export function getRelativeMousePositionToFrameView(
+    e: React.MouseEvent<HTMLDivElement>,
+    frameView: IFrameView,
+    inverse: boolean = false,
+): ElementPosition {
+    return getRelativeClientPositionToFrameView(e.clientX, e.clientY, frameView, inverse);
 }

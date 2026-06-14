@@ -48,43 +48,13 @@ export const DesignPanel = observer(() => {
     const isLocked = editorEngine.state.leftPanelLocked;
     const selectedTab = editorEngine.state.leftPanelTab;
 
-    const handleMouseEnter = (tab: LeftPanelTabValue) => {
-        if (isLocked) {
-            return;
-        }
-        editorEngine.state.leftPanelTab = tab;
-    };
-
-    const isMouseInContentPanel = (e: React.MouseEvent<HTMLDivElement>): boolean => {
-        const mouseX = e.clientX;
-        const mouseY = e.clientY;
-        const contentPanel = e.currentTarget;
-        if (contentPanel) {
-            const { left, right, top, bottom } = contentPanel.getBoundingClientRect();
-            if (mouseX < left || mouseX > right || mouseY < top || mouseY > bottom) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    const handleMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isLocked) {
-            // This is to handle things like dropdown where the mouse is still in the content panel
-            if (!isMouseInContentPanel(e)) {
-                editorEngine.state.leftPanelTab = null;
-            } else {
-                // TODO: Since mouse leave won't trigger anymore, we need to listen and check
-                //  if the mouse actually left the content panel and then close the content panel
-            }
-        } else {
-            // If we're locked, return to the locked tab when mouse leaves
-            editorEngine.state.leftPanelTab = selectedTab;
-        }
-    };
-
+    // Click-only, deterministic toggle. The old hover-to-open / hover-to-close behavior left the panel
+    // hanging open (and "slow to close") because clicking an open tab merely unlocked it instead of
+    // closing it. Now: click a tab to open (locked), click the same tab to close immediately, click a
+    // different tab to switch instantly.
     const handleClick = (tab: LeftPanelTabValue) => {
-        if (selectedTab === tab && isLocked) {
+        if (selectedTab === tab) {
+            editorEngine.state.leftPanelTab = null;
             editorEngine.state.leftPanelLocked = false;
         } else {
             editorEngine.state.leftPanelTab = tab;
@@ -95,10 +65,9 @@ export const DesignPanel = observer(() => {
     return (
         <div
             className="flex h-full overflow-auto"
-            onMouseLeave={handleMouseLeave}
         >
             {/* Left sidebar with tabs */}
-            <div className="w-20 flex flex-col items-center py-0.5 gap-2 bg-black/40 backdrop-blur-xl">
+            <div className="w-20 flex flex-col items-center py-0.5 gap-2 bg-background-primary/80 backdrop-blur-xl">
                 {tabs.map((tab) => (
                     <button
                         key={tab.value}
@@ -111,7 +80,6 @@ export const DesignPanel = observer(() => {
                         )}
                         disabled={tab.disabled}
                         onClick={() => !tab.disabled && handleClick(tab.value)}
-                        onMouseEnter={() => !tab.disabled && handleMouseEnter(tab.value)}
                     >
                         {tab.icon}
                         <span className="text-xs leading-tight">{t(tab.label)}</span>
@@ -126,19 +94,14 @@ export const DesignPanel = observer(() => {
 
             {/* Content panel */}
             {editorEngine.state.leftPanelTab && (
-                <>
-                    <div className="flex-1 w-[280px] bg-background/95 rounded-xl">
-                        <div className="border backdrop-blur-xl h-full shadow overflow-auto p-0 rounded-xl">
-                            {selectedTab === LeftPanelTabValue.LAYERS && <LayersTab />}
-                            {selectedTab === LeftPanelTabValue.BRAND && <BrandTab />}
-                            {selectedTab === LeftPanelTabValue.PAGES && <PagesTab />}
-                            {selectedTab === LeftPanelTabValue.IMAGES && <ImagesTab />}
-                        </div>
+                <div className="flex-1 w-[280px] bg-background/95 rounded-xl">
+                    <div className="border backdrop-blur-xl h-full shadow overflow-auto p-0 rounded-xl">
+                        {selectedTab === LeftPanelTabValue.LAYERS && <LayersTab />}
+                        {selectedTab === LeftPanelTabValue.BRAND && <BrandTab />}
+                        {selectedTab === LeftPanelTabValue.PAGES && <PagesTab />}
+                        {selectedTab === LeftPanelTabValue.IMAGES && <ImagesTab />}
                     </div>
-
-                    {/* Invisible padding area that maintains hover state */}
-                    {!isLocked && <div className="w-24 h-full" />}
-                </>
+                </div>
             )}
         </div>
     );

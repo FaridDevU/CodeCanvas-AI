@@ -2,6 +2,7 @@ import { useEditorEngine } from '@/components/store/editor';
 import { EditorMode } from '@onlook/models';
 import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
+import { getActiveProject } from '@/lib/design-session';
 import { OverlayOpenCode } from './code';
 
 export const OverlayButtons = observer(() => {
@@ -11,7 +12,10 @@ export const OverlayButtons = observer(() => {
     const domId = editorEngine.elements.selected[0]?.domId;
 
     const isPreviewMode = editorEngine.state.editorMode === EditorMode.PREVIEW;
-    const shouldHideButton = !selectedRect || isPreviewMode;
+    // The "open in code" (</>) button navigates via a JSX/oid source map that static HTML projects
+    // don't have, so it does nothing there. Hide it instead of leaving a dead button.
+    const isHtml = getActiveProject()?.framework === 'html';
+    const shouldHideButton = !selectedRect || isPreviewMode || isHtml;
 
     const animationClass =
         'origin-center opacity-0 -translate-y-2 transition-all duration-200';

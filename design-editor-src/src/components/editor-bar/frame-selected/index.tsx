@@ -8,7 +8,6 @@ import { useDropdownControl } from '../hooks/use-dropdown-manager';
 import { useMeasureGroup } from '../hooks/use-measure-group';
 import { OverflowMenu } from '../overflow-menu';
 import { InputSeparator } from '../separator';
-import { DeviceSelector } from './device-selector';
 import { RotateGroup } from './rotate-group';
 import { ThemeGroup } from './theme-group';
 import { WindowActionsGroup } from './window-actions-group';
@@ -22,14 +21,8 @@ export const FrameSelected = observer(({ availableWidth = 0 }: { availableWidth?
     });
     if (!frameData) return null;
 
+    // Device + frame-bezel toggles live in the persistent TopBar now, so they're not repeated here.
     const WINDOW_GROUPS = [
-        {
-            key: 'device',
-            label: 'Device',
-            components: [
-                <DeviceSelector key="device" />
-            ]
-        },
         {
             key: 'rotate',
             label: 'Rotate',
@@ -45,27 +38,36 @@ export const FrameSelected = observer(({ availableWidth = 0 }: { availableWidth?
             ]
         },
         {
-            key: 'theme',
-            label: 'Theme',
+            key: 'frame',
+            label: 'Frame',
             components: [
                 <ThemeGroup key="theme" frameData={frameData} />
             ]
         },
     ];
 
+    // Approximate rendered width (px) of each window group, in order, so the overflow logic uses
+    // real sizes instead of the unrelated div/text table (which made the whole toolbar collapse).
+    const WINDOW_GROUP_WIDTHS = [
+        40,  // rotate: one icon button
+        80,  // window-actions: duplicate (+ delete) buttons
+        112, // frame: 3 theme buttons
+    ];
+
     const { visibleCount } = useMeasureGroup({
         availableWidth,
-        count: WINDOW_GROUPS.length
+        count: WINDOW_GROUPS.length,
+        widths: WINDOW_GROUP_WIDTHS,
     });
     const visibleGroups = WINDOW_GROUPS.slice(0, visibleCount);
     const overflowGroups = WINDOW_GROUPS.slice(visibleCount);
 
     return (
-        <div className="flex items-center justify-center gap-0.5 w-full overflow-hidden px-0.5">
+        <div className="flex items-center justify-center gap-1 w-full overflow-hidden px-1.5">
             {visibleGroups.map((group, groupIdx) => (
                 <React.Fragment key={group.key}>
                     {groupIdx > 0 && <InputSeparator />}
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-1">
                         {group.components.map((comp, idx) => (
                             <React.Fragment key={idx}>{comp}</React.Fragment>
                         ))}

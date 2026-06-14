@@ -8,6 +8,7 @@ import { motion } from 'motion/react';
 import { DivSelected } from './div-selected';
 import { FrameSelected } from './frame-selected';
 import { DropdownManagerProvider } from './hooks/use-dropdown-manager';
+import { ImgSelected } from './img-selected';
 import { TextSelected } from './text-selected';
 
 enum TAG_CATEGORIES {
@@ -48,9 +49,8 @@ const TAG_TYPES: Record<TAG_CATEGORIES, string[]> = {
         'q',
     ],
     [TAG_CATEGORIES.DIV]: ['div'],
-    // TODO: Add img and video tag support
-    [TAG_CATEGORIES.IMG]: [],
-    [TAG_CATEGORIES.VIDEO]: [],
+    [TAG_CATEGORIES.IMG]: ['img', 'picture', 'image', 'svg'],
+    [TAG_CATEGORIES.VIDEO]: ['video'],
 } as const;
 
 const getSelectedTag = (selected: DomElement[]): TAG_CATEGORIES => {
@@ -83,6 +83,9 @@ export const EditorBar = observer(({ availableWidth }: { availableWidth?: number
         if (selectedTag === TAG_CATEGORIES.TEXT) {
             return <TextSelected availableWidth={availableWidth} />;
         }
+        if (selectedTag === TAG_CATEGORIES.IMG || selectedTag === TAG_CATEGORIES.VIDEO) {
+            return <ImgSelected availableWidth={availableWidth} />;
+        }
         return <DivSelected availableWidth={availableWidth} />;
     };
 
@@ -97,7 +100,7 @@ export const EditorBar = observer(({ availableWidth }: { availableWidth?: number
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
                 className={cn(
-                    'flex flex-col border-[0.5px] border-border p-1 px-1 bg-background rounded-xl backdrop-blur drop-shadow-xl z-50 overflow-hidden',
+                    'flex flex-col border-[0.5px] border-border p-1 px-1.5 bg-background rounded-xl backdrop-blur drop-shadow-xl z-50 overflow-hidden',
                     editorEngine.state.editorMode !== EditorMode.DESIGN && !windowSelected && 'hidden',
                 )}
                 transition={{

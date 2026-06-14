@@ -5,6 +5,7 @@ import { RouterType } from '@onlook/models';
 import type { T } from '@onlook/parser';
 import { formatContent, generate, getAstFromContent, t, traverse } from '@onlook/parser';
 import { nanoid } from 'nanoid';
+import { getActiveProjectPages } from '@/lib/design-session';
 import type { SandboxManager } from '../sandbox';
 
 const DEFAULT_LAYOUT_CONTENT = `export default function Layout({
@@ -419,8 +420,9 @@ export const scanPagesFromSandbox = async (sandboxManager: SandboxManager): Prom
     const routerConfig = await sandboxManager.getRouterConfig();
 
     if (!routerConfig) {
-        console.log('No Next.js router detected, returning empty pages');
-        return [];
+        // No Next.js router (e.g. static HTML): use the pages the workbench analyzer already
+        // detected for this project instead of showing an empty "No pages found".
+        return pagesFromWorkbench();
     }
 
     if (routerConfig.type === RouterType.APP) {
@@ -428,6 +430,23 @@ export const scanPagesFromSandbox = async (sandboxManager: SandboxManager): Prom
     } else {
         return await scanPagesDirectory(sandboxManager, routerConfig.basePath);
     }
+};
+
+/** Builds Pages-panel nodes from the static pages reported by the workbench analyzer. */
+const pagesFromWorkbench = (): PageNode[] => {
+    const pages = getActiveProjectPages();
+    if (pages.length === 0) {
+        console.log('No Next.js router and no workbench pages, returning empty pages');
+        return [];
+    }
+    return pages.map((page) => ({
+        id: nanoid(),
+        name: page.name,
+        path: page.path,
+        isActive: false,
+        isRoot: page.path === '/',
+        children: [],
+    }));
 };
 
 

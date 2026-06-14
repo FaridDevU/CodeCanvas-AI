@@ -311,7 +311,9 @@ export const ClickRect = ({
         );
     };
     const isAbsolutelyPositioned = styles?.computed?.position === 'absolute';
-    const shouldShowHandles = shouldShowResizeHandles && isAbsolutelyPositioned;
+    // Resize is now owned by the Moveable layer (MoveableSelectionLayer) for absolute elements, so the
+    // legacy SVG handles are disabled to avoid two conflicting sets of resize handles on the same box.
+    const shouldShowHandles = false && shouldShowResizeHandles && isAbsolutelyPositioned;
 
     return (
         <BaseRect
