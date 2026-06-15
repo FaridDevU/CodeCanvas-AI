@@ -211,6 +211,7 @@ export class DesignProjectAnalyzer {
 		apps: AnalyzedApp[],
 		depth: number,
 		isWorkspaceRoot: boolean,
+		insideStaticHtmlApp: boolean = false,
 	): Promise<void> {
 		if (depth > SCAN_MAX_DEPTH) {
 			return;
@@ -271,14 +272,18 @@ export class DesignProjectAnalyzer {
 			}
 		}
 
-		// Si no se detecto app desde package.json, pero hay index.html, registrar como HTML estatico
-		if (!addedApp && indexHtmlResource && !isInternalStaticAppUri(dir)) {
+		// Si no se detecto app desde package.json, pero hay index.html, registrar como HTML estatico.
+		// Solo si NO estamos ya dentro de una app HTML: las subcarpetas con su propio index.html son
+		// PAGINAS de la app raiz (las recoge analyzeStaticHtml), no apps separadas.
+		let registeredHtmlApp = false;
+		if (!addedApp && indexHtmlResource && !isInternalStaticAppUri(dir) && !insideStaticHtmlApp) {
 			const app = await this.analyzeStaticHtml(dir, indexHtmlResource);
 			if (app) {
 				const appKey = app.rootUri.toString();
 				if (!seenAppUris.has(appKey)) {
 					seenAppUris.add(appKey);
 					apps.push(app);
+					registeredHtmlApp = true;
 				}
 			}
 		}
@@ -308,7 +313,7 @@ export class DesignProjectAnalyzer {
 		}
 
 		for (const subdir of subdirs) {
-			await this.scanFolderRecursive(subdir, seenUris, seenAppUris, apps, depth + 1, false);
+			await this.scanFolderRecursive(subdir, seenUris, seenAppUris, apps, depth + 1, false, insideStaticHtmlApp || registeredHtmlApp);
 		}
 	}
 
@@ -564,6 +569,13 @@ export class DesignProjectAnalyzer {
 
 		const name = dir.path.split('/').pop() || 'app';
 
+		// Real pages: every index.html (root + subfolders) plus standalone *.html files become
+		// pages of THIS app. A folder of static HTML often has /index.html, /nav/index.html, etc.
+		const pages: AnalyzedAppPage[] = [];
+		await this.scanStaticHtmlPages(dir, '', 0, pages);
+		// Root first ('/'), then alphabetical by path. Always keep at least Home.
+		pages.sort((a, b) => (a.path === '/' ? -1 : b.path === '/' ? 1 : a.path.localeCompare(b.path)));
+
 		return {
 			name,
 			rootUri: dir,
@@ -572,8 +584,57 @@ export class DesignProjectAnalyzer {
 			devCommand: null,
 			devPort: null,
 			editable: true,
-			pages: [{ name: 'index', path: '/' }],
+			pages: pages.length ? pages : [{ name: 'Home', path: '/' }],
 		};
+	}
+
+	/** Recursively collects static HTML pages: each index.html maps to its folder path, and other
+	 *  *.html files map to their own path. Respects IGNORED_DIRS and a reasonable depth. */
+	private async scanStaticHtmlPages(dir: URI, relativePath: string, depth: number, pages: AnalyzedAppPage[]): Promise<void> {
+		if (depth > SCAN_MAX_DEPTH) {
+			return;
+		}
+		let children;
+		try {
+			children = (await this.fileService.resolve(dir)).children ?? [];
+		} catch {
+			return;
+		}
+
+		for (const child of children) {
+			if (!child.isFile) {
+				continue;
+			}
+			const lower = child.name.toLowerCase();
+			if (!lower.endsWith('.html')) {
+				continue;
+			}
+			if (lower === 'index.html') {
+				// index.html => the folder itself is a page.
+				const path = relativePath === '' ? '/' : `/${relativePath}/`;
+				const pageName = relativePath === '' ? 'Home' : this.prettyPageName(relativePath.split('/').pop() || 'page');
+				pages.push({ name: pageName, path });
+			} else {
+				// e.g. about.html => its own page.
+				const rel = relativePath === '' ? child.name : `${relativePath}/${child.name}`;
+				pages.push({ name: this.prettyPageName(child.name.replace(/\.html$/i, '')), path: `/${rel}` });
+			}
+		}
+
+		for (const child of children) {
+			if (child.isDirectory && !IGNORED_DIRS.has(child.name) && !child.name.startsWith('.')) {
+				const rel = relativePath === '' ? child.name : `${relativePath}/${child.name}`;
+				await this.scanStaticHtmlPages(child.resource, rel, depth + 1, pages);
+			}
+		}
+	}
+
+	private prettyPageName(raw: string): string {
+		const cleaned = raw.replace(/[-_]+/g, ' ').trim();
+		if (!cleaned) {
+			return 'Page';
+		}
+		return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 	}
 
 	private async hasCssFiles(dir: URI): Promise<boolean> {

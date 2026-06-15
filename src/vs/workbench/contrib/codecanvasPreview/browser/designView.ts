@@ -273,6 +273,14 @@ class DesignViewPane extends ViewPane {
 		if (app.editable) {
 			statusIcon.className = 'codicon codicon-check';
 			append(statusRow, $('span.status-text')).textContent = localize('cc.design.editable', "Editable por Design");
+
+			// Explicit "open" action. The sidebar no longer auto-opens the editor on visibility
+			// (that was invasive), so this button is the way to enter Design from the panel.
+			const openBtn = append(card, $('button.design-open-editor-button')) as HTMLButtonElement;
+			append(openBtn, $('span.codicon.codicon-open-preview'));
+			append(openBtn, $('span.design-open-editor-label')).textContent =
+				localize('cc.design.open', "Abrir editor de Design");
+			openBtn.addEventListener('click', () => { void this.enterDesign(); });
 		} else {
 			statusIcon.className = 'codicon codicon-close';
 			append(statusRow, $('span.status-text')).textContent = localize('cc.design.notSupported', "No soportado");

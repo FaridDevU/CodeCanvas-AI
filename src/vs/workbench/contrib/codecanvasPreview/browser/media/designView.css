@@ -137,6 +137,55 @@
 	word-break: break-word;
 }
 
+/* Primary action: open the Design editor from an editable app card. */
+.design-open-editor-button {
+	appearance: none;
+	-webkit-appearance: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 4px;
+	padding: 6px 12px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 4px;
+	background-color: var(--vscode-button-background, #0e639c);
+	color: var(--vscode-button-foreground, #ffffff);
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 18px;
+	cursor: pointer;
+}
+
+.design-open-editor-button:hover {
+	background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.design-open-editor-button:active {
+	/* subtle press feedback without shifting layout */
+	opacity: 0.85;
+}
+
+.design-open-editor-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: 2px;
+}
+
+.design-open-editor-button .codicon {
+	font-size: 14px;
+	/* keep the glyph from stretching the button on narrow cards */
+	flex: 0 0 auto;
+}
+
+.design-open-editor-button .design-open-editor-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .design-app-pages-header {
 	display: flex;
 	align-items: center;
