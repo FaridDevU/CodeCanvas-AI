@@ -35,6 +35,7 @@ export enum LeftPanelTabValue {
     BRAND = 'brand',
     BRANCHES = 'branches',
     APPS = 'apps',
+    CHECKPOINTS = 'checkpoints',
 }
 
 export enum BrandTabValue {

@@ -35,6 +35,22 @@ export interface OpenChatPayload {
     };
 }
 
+export interface CheckpointInfo {
+    id: number;
+    name: string;
+    label: 'initial' | 'manual';
+    createdAt: number;
+    fileCount: number;
+    isCurrent: boolean;
+    isBase: boolean;
+}
+
+export interface CheckpointRestoreResult {
+    restored: number;
+    failed: number;
+    total: number;
+}
+
 interface PendingRequest {
     resolve: (value: any) => void;
     reject: (err: Error) => void;
@@ -99,6 +115,8 @@ export interface FsChange {
 
 type FsChangeListener = (changes: FsChange[]) => void;
 const fsChangeListeners = new Set<FsChangeListener>();
+type CheckpointChangeListener = () => void;
+const checkpointChangeListeners = new Set<CheckpointChangeListener>();
 let eventListening = false;
 
 function ensureEventListener(): void {
@@ -115,6 +133,14 @@ function ensureEventListener(): void {
                     console.error('[workbench-bridge] fs-change listener failed:', err);
                 }
             }
+        } else if (data.event === 'checkpoint-change') {
+            for (const listener of checkpointChangeListeners) {
+                try {
+                    listener();
+                } catch (err) {
+                    console.error('[workbench-bridge] checkpoint-change listener failed:', err);
+                }
+            }
         }
     });
 }
@@ -124,6 +150,13 @@ export function onWorkbenchFsChange(listener: FsChangeListener): () => void {
     ensureEventListener();
     fsChangeListeners.add(listener);
     return () => fsChangeListeners.delete(listener);
+}
+
+/** Subscribes to checkpoint history changes pushed by the workbench (e.g. created via shortcut). */
+export function onWorkbenchCheckpointChange(listener: CheckpointChangeListener): () => void {
+    ensureEventListener();
+    checkpointChangeListeners.add(listener);
+    return () => checkpointChangeListeners.delete(listener);
 }
 
 export const workbench = {
@@ -151,4 +184,14 @@ export const workbench = {
     watchFs: (rootPath: string) => callWorkbench<{ ok: boolean }>('fs.watch', { rootPath }),
     openWorkbenchChat: (payload: OpenChatPayload) =>
         callWorkbench<{ ok: boolean }>('workbench.chat.openWithContext', payload),
+    // Session checkpoints (safety layer). The store lives natively in the workbench bridge; these
+    // just drive it. The host snapshots html/css in memory, caps the history and keeps the initial.
+    checkpoints: {
+        isEnabled: () => callWorkbench<boolean>('checkpoint.isEnabled'),
+        list: () => callWorkbench<CheckpointInfo[]>('checkpoint.list'),
+        ensureInitial: () => callWorkbench<CheckpointInfo[]>('checkpoint.ensureInitial'),
+        create: () => callWorkbench<CheckpointInfo>('checkpoint.create'),
+        restore: (id: number) => callWorkbench<CheckpointRestoreResult>('checkpoint.restore', { id }),
+        rollback: () => callWorkbench<CheckpointRestoreResult>('checkpoint.rollback'),
+    },
 };
