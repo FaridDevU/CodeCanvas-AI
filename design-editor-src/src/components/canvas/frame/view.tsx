@@ -6,6 +6,7 @@ import { observer } from 'mobx-react-lite';
 import { connect, WindowMessenger } from 'penpal';
 
 import type { Frame } from '@onlook/models';
+import { EditorMode } from '@onlook/models';
 import type {
     PenpalChildMethods,
     PenpalParentMethods,
@@ -376,11 +377,28 @@ export const FrameComponent = observer(
                         case 'codecanvas:preload-error':
                             reportStage(`Error en la pagina: ${String(e.data.detail ?? '').slice(0, 80)}`);
                             break;
+                        case 'codecanvas:inspector-ready':
+                            // The injected inspector just loaded; push the current mode's state so it
+                            // starts disabled in Preview (no outline/label/click capture).
+                            iframeRef.current?.contentWindow?.postMessage(
+                                { type: 'codecanvas:inspector-set-enabled', enabled: editorEngine.state.editorMode === EditorMode.DESIGN },
+                                '*',
+                            );
+                            break;
                     }
                 };
                 window.addEventListener('message', onMessage);
                 return () => window.removeEventListener('message', onMessage);
             }, []);
+
+            // Keep the in-iframe inspector in sync with the editor mode: enabled only in Design, so
+            // Preview shows the real page (BUG: inspector overlay/label persisted in Preview).
+            useEffect(() => {
+                iframeRef.current?.contentWindow?.postMessage(
+                    { type: 'codecanvas:inspector-set-enabled', enabled: editorEngine.state.editorMode === EditorMode.DESIGN },
+                    '*',
+                );
+            }, [editorEngine.state.editorMode]);
 
             return (
                 <WebPreview className="relative isolate !rounded-none !border-0 !bg-transparent">

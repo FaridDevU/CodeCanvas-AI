@@ -108,15 +108,36 @@ export const TextEditor = observer(() => {
             view.focus();
         }
 
-        // Attach blur handler directly to ProseMirror's contenteditable
+        // End editing ONLY on an explicit pointer press outside the editor. A bare blur is not enough:
+        // opening "Editar texto" from the right-click menu makes the menu return focus to its trigger
+        // as it closes (and overlay refreshes can momentarily steal focus), which blurred the editor
+        // and closed it instantly. We track real outside pointer presses; transient focus losses just
+        // re-focus so editing survives until Enter/Escape or a deliberate click outside.
+        let pointerPressedOutside = false;
+        const onDocPointerDown = (e: Event) => {
+            pointerPressedOutside = !editorRef.current?.contains(e.target as Node);
+        };
+        document.addEventListener('pointerdown', onDocPointerDown, true);
+
         const handleBlur = (event: FocusEvent) => {
-            if (onStopRef.current && !editorRef.current?.contains(event.relatedTarget as Node)) {
-                onStopRef.current();
+            if (editorRef.current?.contains(event.relatedTarget as Node)) {
+                return;
             }
+            if (pointerPressedOutside) {
+                onStopRef.current?.();
+                return;
+            }
+            // Transient focus loss (menu close, overlay refresh/reselect): keep editing.
+            requestAnimationFrame(() => {
+                if (editorViewRef.current && overlayState.textEditor) {
+                    editorViewRef.current.focus();
+                }
+            });
         };
         view.dom.addEventListener('blur', handleBlur, true);
 
         return () => {
+            document.removeEventListener('pointerdown', onDocPointerDown, true);
             view.dom.removeEventListener('blur', handleBlur, true);
             view.destroy();
         };

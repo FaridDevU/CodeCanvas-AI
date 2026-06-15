@@ -151,8 +151,13 @@ export const INSPECTOR_SCRIPT = /* js */ `
   /* ─── Event handlers ─── */
 
   let currentTarget = null;
+  // Only active in Design mode. The parent toggles this via postMessage; in Preview the inspector
+  // must draw NOTHING (no outline, no label) and intercept NO clicks, so native controls (e.g. the
+  // video play button) work like the real page.
+  let enabled = true;
 
   function onMouseOver(e) {
+    if (!enabled) return;
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     currentTarget = target;
@@ -161,6 +166,7 @@ export const INSPECTOR_SCRIPT = /* js */ `
   }
 
   function onMouseOut(e) {
+    if (!enabled) return;
     if (
       e.relatedTarget &&
       e.relatedTarget instanceof HTMLElement &&
@@ -173,6 +179,7 @@ export const INSPECTOR_SCRIPT = /* js */ `
   }
 
   function onClick(e) {
+    if (!enabled) return;
     if (!currentTarget) return;
     const source = getSourceForElement(currentTarget);
     if (!source) return;
@@ -198,6 +205,21 @@ export const INSPECTOR_SCRIPT = /* js */ `
   document.addEventListener('mouseover', onMouseOver, { capture: true });
   document.addEventListener('mouseout', onMouseOut, { capture: true });
   document.addEventListener('click', onClick, { capture: true });
+
+  // The parent (Design canvas) enables the inspector only in Design mode.
+  window.addEventListener('message', function (e) {
+    var d = e && e.data;
+    if (d && d.type === 'codecanvas:inspector-set-enabled') {
+      enabled = !!d.enabled;
+      if (!enabled) {
+        currentTarget = null;
+        removeOverlay();
+      }
+    }
+  }, false);
+
+  // Tell the parent we're ready so it can push the current mode's enabled state immediately.
+  try { window.parent.postMessage({ type: 'codecanvas:inspector-ready' }, '*'); } catch (e) {}
 
   console.log('[CodeCanvas Inspector] Active — hover any element to inspect, click to open in Code.');
 })();
