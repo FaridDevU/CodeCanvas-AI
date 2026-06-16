@@ -193,5 +193,7 @@ export const workbench = {
         create: () => callWorkbench<CheckpointInfo>('checkpoint.create'),
         restore: (id: number) => callWorkbench<CheckpointRestoreResult>('checkpoint.restore', { id }),
         rollback: () => callWorkbench<CheckpointRestoreResult>('checkpoint.rollback'),
+        delete: (id: number) =>
+            callWorkbench<{ deleted: boolean; reason?: string; checkpoints: CheckpointInfo[] }>('checkpoint.delete', { id }),
     },
 };

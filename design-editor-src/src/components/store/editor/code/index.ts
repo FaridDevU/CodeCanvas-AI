@@ -7,6 +7,7 @@ import { makeAutoObservable } from 'mobx';
 
 import { type EditorEngine } from '@/components/store/editor/engine';
 import { getActiveProject } from '@/lib/design-session';
+import { debugLog } from '@/lib/debug';
 import { applyHtmlInsert, applyHtmlMove, applyHtmlRemove, applyHtmlStyleEdit, applyHtmlTextEdit, pageFileForPathname } from '@/lib/html-writeback';
 import {
     getEditTextRequests,
@@ -103,6 +104,7 @@ export class CodeManager {
                     action.location,
                     pageFile,
                 );
+                debugLog('[CC-INSERT] insert-element', { tag: el.tagName, ok: result.ok, location: action.location });
                 if (result.ok) {
                     this.reloadFrame(target.frameId);
                 } else {

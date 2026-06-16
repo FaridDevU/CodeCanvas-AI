@@ -208,6 +208,7 @@ export class DesignEditorBridge extends Disposable {
 			case 'checkpoint.create': return this.createCheckpoint();
 			case 'checkpoint.restore': return this.restoreCheckpoint(Number(params.id));
 			case 'checkpoint.rollback': return this.rollback();
+			case 'checkpoint.delete': return Promise.resolve(this.deleteCheckpoint(Number(params.id)));
 			default: return Promise.reject(new Error(`Unknown bridge method: ${method}`));
 		}
 	}
@@ -510,8 +511,29 @@ export class DesignEditorBridge extends Disposable {
 		this.checkpoints.push({ id, name: `Checkpoint ${id}`, label, createdAt: Date.now(), files });
 		this.currentCheckpointId = id;
 		this.enforceLimit();
+		console.log('[CC-CHECKPOINT] create', { id, label, files: files.size, total: this.checkpoints.length });
 		this.notifyCheckpointChange();
 		return this.getCheckpoints().find(c => c.id === id)!;
+	}
+
+	/** Deletes a manual checkpoint. Never deletes the base (initial) one — it's needed for
+	 *  "Revertir al inicial". If the deleted checkpoint was current, current moves to the most recent
+	 *  remaining checkpoint (or the base). */
+	deleteCheckpoint(id: number): { deleted: boolean; reason?: string; checkpoints: DesignCheckpointInfo[] } {
+		if (id === this.baseCheckpointId()) {
+			return { deleted: false, reason: 'base', checkpoints: this.getCheckpoints() };
+		}
+		const idx = this.checkpoints.findIndex(c => c.id === id);
+		if (idx === -1) {
+			return { deleted: false, reason: 'not-found', checkpoints: this.getCheckpoints() };
+		}
+		this.checkpoints.splice(idx, 1);
+		if (this.currentCheckpointId === id) {
+			this.currentCheckpointId = this.checkpoints[this.checkpoints.length - 1]?.id ?? this.baseCheckpointId();
+		}
+		console.log('[CC-CHECKPOINT] delete', { id, total: this.checkpoints.length, current: this.currentCheckpointId });
+		this.notifyCheckpointChange();
+		return { deleted: true, checkpoints: this.getCheckpoints() };
 	}
 
 	/** Notifies listeners (native) and the iframe panel that the checkpoint history changed, so the
@@ -541,6 +563,7 @@ export class DesignEditorBridge extends Disposable {
 		}
 		const result = await this.writeSnapshot(checkpoint.files);
 		this.currentCheckpointId = id;
+		console.log('[CC-CHECKPOINT] restore', { id, files: checkpoint.files.size, restored: result.restored, failed: result.failed });
 		this.notifyCheckpointChange();
 		return result;
 	}

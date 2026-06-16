@@ -176,6 +176,22 @@ export const MoveableSelectionLayer = observer(() => {
 
     const px = (n: number) => `${Math.round(n)}px`;
 
+    // Keep moved/resized elements inside the building frame so they can't be dragged off-screen and
+    // lost. Clamps element-space left/top to [0, frameW-w] x [0, frameH-h]; if the element is bigger
+    // than the frame, pins to 0 (never NaN). Applies to media, inserted boxes/text and freed blocks.
+    const frameDim = editorEngine.frames.get(el.frameId)?.frame.dimension;
+    const clampToFrame = (left: number, top: number, width: number, height: number) => {
+        if (!frameDim || !Number.isFinite(left) || !Number.isFinite(top)) {
+            return { left, top };
+        }
+        const maxLeft = Math.max(0, frameDim.width - (Number.isFinite(width) ? width : 0));
+        const maxTop = Math.max(0, frameDim.height - (Number.isFinite(height) ? height : 0));
+        return {
+            left: Math.min(Math.max(0, left), maxLeft),
+            top: Math.min(Math.max(0, top), maxTop),
+        };
+    };
+
     const captureBase = () => {
         const c = el.styles?.computed ?? {};
         const rect = el.rect as { left?: number; top?: number; width?: number; height?: number } | undefined;
@@ -509,8 +525,9 @@ export const MoveableSelectionLayer = observer(() => {
                             gesturing.current = false;
                             const newLeft = base.current.left + last.beforeTranslate[0] / s;
                             const newTop = base.current.top + last.beforeTranslate[1] / s;
-                            ccLog('dragEnd', { domId: el.domId, oid: el.oid, dragTicks: dragTicks.current, hasMovement: true });
-                            void persist({ left: px(newLeft), top: px(newTop) });
+                            const cl = clampToFrame(newLeft, newTop, base.current.width, base.current.height);
+                            ccLog('dragEnd', { domId: el.domId, oid: el.oid, dragTicks: dragTicks.current, hasMovement: true, clampedLeft: Math.round(cl.left), clampedTop: Math.round(cl.top) });
+                            void persist({ left: px(cl.left), top: px(cl.top) });
                         } else {
                             gesturing.current = false;
                             ccLog('dragEnd', { domId: el.domId, dragTicks: dragTicks.current, hasMovement: false });
@@ -560,11 +577,12 @@ export const MoveableSelectionLayer = observer(() => {
                             });
                             gesturing.current = false;
                             ccLog('resizeEnd', { domId: el.domId, oid: el.oid, resizeTicks: resizeTicks.current, hasMovement: true });
+                            const clr = clampToFrame(finalLeft, finalTop, finalWidth, finalHeight);
                             void persist({
                                 width: px(finalWidth),
                                 height: px(finalHeight),
-                                left: px(finalLeft),
-                                top: px(finalTop),
+                                left: px(clr.left),
+                                top: px(clr.top),
                             });
                             debugLog('[CC-MOVEABLE] resizeEnd', {
                                 finalLeft: Math.round(finalLeft), finalTop: Math.round(finalTop),

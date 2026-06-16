@@ -1,7 +1,8 @@
 // Checkpoints tab: the safety-layer history for the Design session. The checkpoint store itself
 // lives natively in the workbench bridge (in-memory snapshots of html/css, capped, initial kept);
-// this tab only lists it and drives create/restore/rollback over the `checkpoint.*` bridge RPC.
+// this tab only lists it and drives create/restore/rollback/delete over the `checkpoint.*` RPC.
 
+import { useEditorEngine } from '@/components/store/editor';
 import { onWorkbenchCheckpointChange, workbench, type CheckpointInfo } from '@/lib/workbench-bridge';
 import {
     AlertDialog,
@@ -19,13 +20,18 @@ import { cn } from '@onlook/ui/utils';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-type Confirm = { kind: 'restore'; cp: CheckpointInfo } | { kind: 'revert' } | null;
+type Confirm =
+    | { kind: 'restore'; cp: CheckpointInfo }
+    | { kind: 'revert' }
+    | { kind: 'delete'; cp: CheckpointInfo }
+    | null;
 
 function formatTime(ts: number): string {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export const CheckpointsTab = () => {
+    const editorEngine = useEditorEngine();
     const [checkpoints, setCheckpoints] = useState<CheckpointInfo[]>([]);
     const [busy, setBusy] = useState(false);
     const [confirm, setConfirm] = useState<Confirm>(null);
@@ -68,15 +74,39 @@ export const CheckpointsTab = () => {
             setBusy(true);
             try {
                 const { restored, failed } = await action();
+                // Reload the canvas so it shows the restored files. The workbench file watcher does
+                // NOT reload the frame, so without this the disk reverts but the canvas stays stale.
+                editorEngine.frames.reloadAllViews();
                 if (failed > 0) {
                     toast.warning(`${label}: ${restored} restaurados, ${failed} fallaron`);
                 } else {
                     toast.success(label, { description: `${restored} archivos restaurados` });
                 }
-                // The canvas reloads on its own through the workbench file watcher.
                 await refresh();
             } catch (err) {
                 toast.error('No se pudo restaurar', {
+                    description: err instanceof Error ? err.message : String(err),
+                });
+            } finally {
+                setBusy(false);
+            }
+        },
+        [refresh, editorEngine],
+    );
+
+    const handleDelete = useCallback(
+        async (cp: CheckpointInfo) => {
+            setBusy(true);
+            try {
+                const res = await workbench.checkpoints.delete(cp.id);
+                if (res.deleted) {
+                    toast.success(`${cp.name} eliminado`);
+                } else if (res.reason === 'base') {
+                    toast.warning('No se puede eliminar el checkpoint inicial.');
+                }
+                await refresh();
+            } catch (err) {
+                toast.error('No se pudo eliminar', {
                     description: err instanceof Error ? err.message : String(err),
                 });
             } finally {
@@ -94,10 +124,12 @@ export const CheckpointsTab = () => {
         }
         if (c.kind === 'restore') {
             await runRestore(() => workbench.checkpoints.restore(c.cp.id), `Restaurado "${c.cp.name}"`);
-        } else {
+        } else if (c.kind === 'revert') {
             await runRestore(() => workbench.checkpoints.rollback(), 'Cambios revertidos');
+        } else {
+            await handleDelete(c.cp);
         }
-    }, [confirm, runRestore]);
+    }, [confirm, runRestore, handleDelete]);
 
     // Newest first so the latest safe point is at the top.
     const ordered = [...checkpoints].reverse();
@@ -162,6 +194,19 @@ export const CheckpointsTab = () => {
                             >
                                 <Icons.Reset className="w-3.5 h-3.5" />
                             </Button>
+                            {/* The base (initial) checkpoint can't be deleted: it's the rollback anchor. */}
+                            {cp.label !== 'initial' && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={busy}
+                                    title="Eliminar este checkpoint"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
+                                    onClick={() => setConfirm({ kind: 'delete', cp })}
+                                >
+                                    <Icons.Trash className="w-3.5 h-3.5" />
+                                </Button>
+                            )}
                         </div>
                     ))
                 )}
@@ -202,18 +247,22 @@ export const CheckpointsTab = () => {
                         <AlertDialogTitle>
                             {confirm?.kind === 'restore'
                                 ? `Restaurar "${confirm.cp.name}"?`
-                                : 'Revertir al checkpoint inicial?'}
+                                : confirm?.kind === 'delete'
+                                    ? `Eliminar "${confirm.cp.name}"?`
+                                    : 'Revertir al checkpoint inicial?'}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             {confirm?.kind === 'restore'
                                 ? 'Se restaurarán los archivos editados al estado de este checkpoint. Los archivos nuevos no se borrarán.'
-                                : 'Se restaurarán los archivos al checkpoint inicial de esta sesión. Los archivos nuevos no se borrarán. Esta acción no se puede deshacer.'}
+                                : confirm?.kind === 'delete'
+                                    ? 'Se quita del historial. No cambia tus archivos; solo elimina este punto de restauración.'
+                                    : 'Se restaurarán los archivos al checkpoint inicial de esta sesión. Los archivos nuevos no se borrarán. Esta acción no se puede deshacer.'}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void handleConfirm()}>
-                            {confirm?.kind === 'restore' ? 'Restaurar' : 'Revertir'}
+                            {confirm?.kind === 'restore' ? 'Restaurar' : confirm?.kind === 'delete' ? 'Eliminar' : 'Revertir'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
