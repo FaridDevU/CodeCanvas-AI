@@ -24,8 +24,12 @@ import {
 } from './requests';
 
 export class CodeManager {
+    private htmlWriteQueue: Promise<void> = Promise.resolve();
+
     constructor(private editorEngine: EditorEngine) {
-        makeAutoObservable(this);
+        makeAutoObservable(this, {
+            htmlWriteQueue: false,
+        });
     }
 
     private isHtmlProject(): boolean {
@@ -61,6 +65,18 @@ export class CodeManager {
      * the supported ops and warn (non-blocking) for the ones that don't write to HTML yet.
      */
     private async writeHtml(action: Action): Promise<void> {
+        // Static HTML writes are read-modify-write patches against the same source files. Moveable
+        // drag/resize persists asynchronously, while insert-text/box/media can fire immediately after
+        // the mouse is released. Without this queue, two actions can both read the old HTML and the
+        // later write appears to "reset" the earlier move. Keep the full HTML write path serialized.
+        const run = this.htmlWriteQueue.catch(() => undefined).then(async () => {
+            await this.writeHtmlDispatch(action);
+        });
+        this.htmlWriteQueue = run;
+        await run;
+    }
+
+    private async writeHtmlDispatch(action: Action): Promise<void> {
         switch (action.type) {
             case 'update-style': {
                 for (const target of action.targets) {

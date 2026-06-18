@@ -11,7 +11,7 @@ import { HotkeysArea } from './hotkeys';
 import { Overlay } from './overlay';
 import { MoveableSelectionLayer } from './overlay/moveable-selection-layer';
 import { CcMoveableHud } from './overlay/cc-moveable-hud';
-import { isDebugEnabled } from '@/lib/debug';
+import { isHudEnabled } from '@/lib/debug';
 import { DragSelectOverlay } from './overlay/drag-select';
 import { PanOverlay } from './overlay/pan';
 import { RecenterCanvasButton } from './recenter-canvas-button';
@@ -305,9 +305,8 @@ export const Canvas = observer(() => {
                 />
                 <Overlay />
                 <MoveableSelectionLayer />
-                {/* Diagnostic HUD: only in dev or when the user opts in (localStorage cc-debug=1).
-                    Never shown to a normal user. */}
-                {isDebugEnabled() && <CcMoveableHud />}
+                {/* Diagnostic HUD: explicitly opt-in with localStorage cc-hud=1. Never shown by default. */}
+                {isHudEnabled() && <CcMoveableHud />}
                 <PanOverlay
                     clampPosition={(position: { x: number; y: number }) =>
                         clampPosition(position, scale)

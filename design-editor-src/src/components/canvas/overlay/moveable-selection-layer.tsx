@@ -60,6 +60,35 @@ function applyInlineStyleDirect(
     }
 }
 
+// Reads the element's CURRENT geometry (CSS px; left/top in offset-parent space, the same space we
+// persist) straight from the same-origin preview iframe. Used so a NEW gesture captures a fresh base
+// even when the previous gesture's async reselect hasn't refreshed the cached DomElement yet — without
+// this, a quick second drag started from a stale position and the element jumped or didn't move.
+function readLiveGeom(
+    view: any,
+    domId: string,
+): { left: number | null; top: number | null; width: number; height: number } | null {
+    try {
+        const doc: Document | undefined = view?.contentDocument;
+        if (!doc) return null;
+        const node = doc.querySelector(`[data-odid="${domId}"]`) as HTMLElement | null;
+        const win = doc.defaultView;
+        if (!node || !win) return null;
+        const cs = win.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        const left = parseFloat(cs.left);
+        const top = parseFloat(cs.top);
+        return {
+            left: Number.isFinite(left) ? left : null,
+            top: Number.isFinite(top) ? top : null,
+            width: rect.width,
+            height: rect.height,
+        };
+    } catch {
+        return null;
+    }
+}
+
 export const MoveableSelectionLayer = observer(() => {
     const editorEngine = useEditorEngine();
     const overlay = editorEngine.overlay.state;
@@ -196,11 +225,16 @@ export const MoveableSelectionLayer = observer(() => {
         const c = el.styles?.computed ?? {};
         const rect = el.rect as { left?: number; top?: number; width?: number; height?: number } | undefined;
         const scale = editorEngine.canvas.scale || 1;
+        // Read the live element first so consecutive drags start from the REAL current position (the
+        // cached snapshot lags the async reselect). Fall back to the cached values if the live read
+        // fails (e.g. proxy/iframe not reachable).
+        const view = editorEngine.frames.get(el.frameId)?.view;
+        const live = readLiveGeom(view, el.domId);
         base.current = {
-            left: num(c.left, rect?.left ?? 0),
-            top: num(c.top, rect?.top ?? 0),
-            width: num(c.width, rect?.width ?? clickRect.width / scale),
-            height: num(c.height, rect?.height ?? clickRect.height / scale),
+            left: live?.left ?? num(c.left, rect?.left ?? 0),
+            top: live?.top ?? num(c.top, rect?.top ?? 0),
+            width: live?.width ?? num(c.width, rect?.width ?? clickRect.width / scale),
+            height: live?.height ?? num(c.height, rect?.height ?? clickRect.height / scale),
         };
         baseScreen.current = {
             left: clickRect.left,
@@ -490,6 +524,10 @@ export const MoveableSelectionLayer = observer(() => {
                     // nothing to start a center-drag from — handles still work (own pointer-events) but the
                     // box can't be moved. dragArea adds Moveable's own draggable center layer instead.
                     dragArea={true}
+                    // DRAG (move) persists ONLY left/top — never width/height (those change only on
+                    // resize). The clamp keeps left/top inside the frame in CSS coords (offset-parent
+                    // space, same as persisted), and reselect after persist is always by identity
+                    // (domId/oid), never by clickRects[0] or coordinates.
                     onDragStart={() => {
                         gesturing.current = true;
                         dragTicks.current = 0;
@@ -535,6 +573,9 @@ export const MoveableSelectionLayer = observer(() => {
                         }
                         debugLog('[CC-MOVEABLE] onDragEnd', { hasMovement: !!last });
                     }}
+                    // RESIZE persists the full geometry (width/height + left/top, since corner/edge
+                    // handles can re-anchor the box). width/height clamped to >= 1px; left/top clamped
+                    // to the frame like drag.
                     onResizeStart={() => {
                         gesturing.current = true;
                         resizeTicks.current = 0;

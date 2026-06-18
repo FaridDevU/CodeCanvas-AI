@@ -27,6 +27,15 @@ export function isDebugEnabled(): boolean {
     return DEBUG_ENABLED;
 }
 
+// The on-screen diagnostic HUD is opt-in separately from debug logging. Never auto-enabled.
+export function isHudEnabled(): boolean {
+    try {
+        return typeof localStorage !== 'undefined' && localStorage.getItem('cc-hud') === '1';
+    } catch {
+        return false;
+    }
+}
+
 export function debugLog(...args: unknown[]): void {
     if (DEBUG_ENABLED) {
         // eslint-disable-next-line no-console
