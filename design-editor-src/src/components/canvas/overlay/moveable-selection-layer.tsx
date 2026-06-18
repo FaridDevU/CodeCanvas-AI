@@ -304,7 +304,35 @@ export const MoveableSelectionLayer = observer(() => {
             ),
         };
 
-        // 1. Live patch + verify it (a) is the SAME element by identity and (b) really moved/resized.
+        // 1. Persist to the HTML file + history FIRST.
+        //
+        // Do not move this after the live DOM patch. Moveable manipulates a visual proxy and the iframe
+        // DOM can be patched before the source HTML is written. If the user immediately inserts text,
+        // box or media during that gap, the insert reads the old source, writes it, then reloads the
+        // frame. Visually that looks like the page reverted to an older checkpoint. Writing the source
+        // first makes the HTML the committed state before any following insert/reload can happen.
+        const action = {
+            type: 'update-style' as const,
+            targets: [
+                {
+                    frameId: el.frameId,
+                    branchId: el.branchId,
+                    domId: el.domId,
+                    oid: el.oid,
+                    change,
+                },
+            ],
+        };
+        try {
+            await editorEngine.history.push(action as any);
+            ccLog('persist-result', { domId: el.domId, ok: true });
+            debugLog('[CC-MOVEABLE] persist result', { ok: true });
+        } catch (error) {
+            ccLog('persist-result', { domId: el.domId, ok: false, error: String(error) });
+            debugLog('[CC-MOVEABLE] persist result', { ok: false, error: String(error) });
+        }
+
+        // 2. Live patch + verify it (a) is the SAME element by identity and (b) really moved/resized.
         // Identity must be confirmed: if updateStyle somehow returned a different element, accepting it
         // would re-select and then keep editing the wrong element. So require liveDomEl.oid === el.oid.
         const view = editorEngine.frames.get(el.frameId)?.view;
@@ -350,28 +378,6 @@ export const MoveableSelectionLayer = observer(() => {
             domId: el.domId, oid: el.oid, liveOid: liveDomEl?.oid,
             found: !!liveDomEl, sameIdentity, rectChanged, applied: liveApplied,
         });
-
-        // 2. Persist to the HTML file + history (no extra live dispatch: history.push writes the file).
-        const action = {
-            type: 'update-style' as const,
-            targets: [
-                {
-                    frameId: el.frameId,
-                    branchId: el.branchId,
-                    domId: el.domId,
-                    oid: el.oid,
-                    change,
-                },
-            ],
-        };
-        try {
-            await editorEngine.history.push(action as any);
-            ccLog('persist-result', { domId: el.domId, ok: true });
-            debugLog('[CC-MOVEABLE] persist result', { ok: true });
-        } catch (error) {
-            ccLog('persist-result', { domId: el.domId, ok: false, error: String(error) });
-            debugLog('[CC-MOVEABLE] persist result', { ok: false, error: String(error) });
-        }
 
         // 3. VERIFY the live DOM actually reached the requested geometry — this applies to BOTH resize
         // (width/height) AND move (left/top). LEARNING (this bug bit us repeatedly): Moveable only drives
