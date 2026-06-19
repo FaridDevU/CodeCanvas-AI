@@ -1,4 +1,5 @@
 import { debugLog } from '@/lib/debug';
+import { getActiveProject } from '@/lib/design-session';
 import { useEditorEngine } from '@/components/store/editor';
 import type { FrameData } from '@/components/store/editor/frames';
 import { getRelativeMousePositionToFrameView } from '@/components/store/editor/overlay/utils';
@@ -86,10 +87,18 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
                             editorEngine.elements.click([el]);
                             // Absolutely-positioned elements are dragged/resized by the Moveable layer
                             // (MoveableSelectionLayer), so don't arm the legacy free-move path for them.
-                            // Flow elements still use the legacy index-reorder drag.
                             const pos2 = el.styles?.computed?.position;
                             const handledByMoveable = pos2 === 'absolute' || pos2 === 'fixed';
-                            if (!handledByMoveable) {
+                            // The legacy lift-to-fixed drag (preview-side MoveManager) persists its
+                            // index-reorder through the JSX/source-metadata pipeline. Static-HTML projects
+                            // (framework 'html') have NO JSX index, so that pipeline can never resolve the
+                            // element: the drag lifts it to position:fixed + transform in the live DOM but
+                            // nothing is written back, leaving media/flow content stuck covering the canvas
+                            // (see html-writeback "No metadata found for OID"). Only arm it where the reorder
+                            // can actually persist. Design-created elements are absolute -> handledByMoveable,
+                            // so they keep working via the Moveable layer + html-writeback.
+                            const isHtmlProject = getActiveProject()?.framework === 'html';
+                            if (!handledByMoveable && !isHtmlProject) {
                                 editorEngine.move.startDragPreparation(el, pos, frameData);
                             }
                         }
