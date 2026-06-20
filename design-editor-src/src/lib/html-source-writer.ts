@@ -264,13 +264,18 @@ export interface InsertSpec {
 function buildElementHtml(spec: InsertSpec, ccId: string): string {
     const attrs: string[] = [];
     for (const [k, v] of Object.entries(spec.attributes)) {
-        if (ONLOOK_ATTR_RE.test(k) || k === 'style') continue;
+        if (ONLOOK_ATTR_RE.test(k) || k === 'style' || k === CC_ID_ATTR) continue;
         attrs.push(`${k}="${escapeAttr(v)}"`);
     }
-    const styleStr = Object.entries(spec.styles)
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`)
-        .join('; ');
+    // Merge the inline `style` attribute (undo of a delete carries geometry there) with spec.styles;
+    // spec.styles entries come last so they win on conflicts.
+    const stylePieces: string[] = [];
+    const rawStyle = spec.attributes['style']?.trim().replace(/;\s*$/, '');
+    if (rawStyle) stylePieces.push(rawStyle);
+    for (const [k, v] of Object.entries(spec.styles)) {
+        if (v) stylePieces.push(`${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${v}`);
+    }
+    const styleStr = stylePieces.join('; ');
     if (styleStr) attrs.push(`style="${escapeAttr(styleStr)}"`);
     attrs.push(`${CC_ID_ATTR}="${ccId}"`);
     const tag = spec.tagName.toLowerCase();
@@ -312,7 +317,10 @@ export function writeInsert(
         const v = getAttr(n, CC_ID_ATTR);
         if (v) used.add(v);
     }
-    const html = buildElementHtml(spec, newCcId(used));
+    // Reuse the supplied id (undo/redo identity) when free; otherwise mint a fresh one.
+    const explicitId = spec.attributes[CC_ID_ATTR];
+    const ccId = explicitId && !used.has(explicitId) ? explicitId : newCcId(used);
+    const html = buildElementHtml(spec, ccId);
     const s = new MagicString(source);
     s.appendLeft(offset, indentedInsert(source, offset, html, location.type));
     migrateCcIds(parsed, s);

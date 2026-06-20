@@ -196,6 +196,12 @@ export function getCleanedElement(
     domId: string,
     oid: string,
 ): ActionElement {
+    // Static-HTML elements carry a durable `data-cc-id`; preserve their identity, the
+    // `data-cc-created` marker and the inline `style` (where geometry lives) so undo of a delete
+    // restores the element faithfully and redo can find it by the SAME id. `data-cc-id` follows the
+    // `oid` param: undo passes the original id (stable across undo/redo), copy/paste passes a fresh
+    // one (no duplicate). JSX elements have no `data-cc-*`, so this whole block is a no-op for them.
+    const isHtmlEl = !!copiedEl.attributes['data-cc-id'];
     const cleanedEl: ActionElement = {
         tagName: copiedEl.tagName,
         attributes: {
@@ -203,6 +209,17 @@ export function getCleanedElement(
             [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
             [EditorAttributes.DATA_ONLOOK_ID]: oid,
             [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
+            ...(isHtmlEl
+                ? {
+                      'data-cc-id': oid,
+                      ...(copiedEl.attributes['data-cc-created']
+                          ? { 'data-cc-created': copiedEl.attributes['data-cc-created'] }
+                          : {}),
+                      ...(copiedEl.attributes['style']
+                          ? { style: copiedEl.attributes['style'] }
+                          : {}),
+                  }
+                : {}),
         },
         styles: { ...copiedEl.styles },
         textContent: copiedEl.textContent,

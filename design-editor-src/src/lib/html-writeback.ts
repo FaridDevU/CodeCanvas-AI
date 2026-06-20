@@ -472,7 +472,9 @@ export async function applyHtmlInsert(
     const el = doc.createElement(spec.tagName);
     for (const [k, v] of Object.entries(spec.attributes)) {
         if (ONLOOK_ATTR_RE.test(k)) continue; // never write Onlook editor attributes to source
-        if (k === 'style') continue; // styles handled below
+        if (k === CC_ID_ATTR) continue; // identity handled below (explicit-or-generated)
+        // `style` IS written here: undo of a delete carries the element's inline geometry in the
+        // style attribute; spec.styles below then merges on top.
         el.setAttribute(k, v);
     }
     for (const [prop, value] of Object.entries(spec.styles)) {
@@ -481,13 +483,15 @@ export async function applyHtmlInsert(
     }
     if (spec.textContent) el.textContent = spec.textContent;
 
-    // Durable id for the new element too.
+    // Reuse the element's existing durable id when one is supplied (undo/redo must keep the SAME id so
+    // redo's remove can find it); otherwise mint a fresh one (new inserts).
     const used = new Set<string>();
     for (const e of editableElements(doc)) {
         const v = e.getAttribute(CC_ID_ATTR);
         if (v) used.add(v);
     }
-    el.setAttribute(CC_ID_ATTR, newCcId(used));
+    const explicitId = spec.attributes[CC_ID_ATTR];
+    el.setAttribute(CC_ID_ATTR, explicitId && !used.has(explicitId) ? explicitId : newCcId(used));
 
     const container = (location.targetOid && elementForOid(doc, location.targetOid)) || doc.body;
     insertAt(container, el, location);
