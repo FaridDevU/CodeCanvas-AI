@@ -252,12 +252,21 @@ export const FrameComponent = observer(
                 return async (...args: Parameters<T>) => {
                     try {
                         if (!method) throw new Error('Method not initialized');
-                        return method(...args);
+                        // `await` so a penpal REJECTION is caught here instead of escaping as an
+                        // "Uncaught (in promise)" PenpalError.
+                        return await method(...args);
                     } catch (error) {
-                        console.error(
-                            `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Method failed:`,
-                            error,
-                        );
+                        const msg = error instanceof Error ? error.message : String(error);
+                        // A writeback reloads the frame, which tears down the penpal connection; calls
+                        // already in flight then reject with "destroyed connection". That's expected and
+                        // the reload supersedes the result, so don't spam the console with it.
+                        if (!/destroyed connection/i.test(msg)) {
+                            console.error(
+                                `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Method failed:`,
+                                error,
+                            );
+                        }
+                        return undefined as ReturnType<T>;
                     }
                 };
             };
