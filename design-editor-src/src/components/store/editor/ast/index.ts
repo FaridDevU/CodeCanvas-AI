@@ -2,6 +2,7 @@ import type { JsxElementMetadata } from '@onlook/file-system';
 import type { LayerNode } from '@onlook/models';
 import { getTemplateNodeChild } from '@onlook/parser';
 import { makeAutoObservable } from 'mobx';
+import { getActiveProject } from '@/lib/design-session';
 import type { BranchData } from '../branch/manager';
 import type { EditorEngine } from '../engine';
 import { LayersManager } from './layers';
@@ -34,6 +35,10 @@ export class AstManager {
     }
 
     processNode(frameId: string, node: LayerNode) {
+        // JSX metadata mapping (dynamic/core types, instances) only exists in JSX/React projects.
+        // For static HTML there is no metadata, so this DFS only spammed "Metadata not found" once
+        // per node on every reload/writeback. Skip it entirely.
+        if (getActiveProject()?.framework === 'html') return;
         this.dfs(frameId, node, (n) => {
             this.processNodeForMap(frameId, n);
         });
