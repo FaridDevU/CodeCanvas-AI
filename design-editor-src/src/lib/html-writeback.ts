@@ -45,6 +45,11 @@ export const CC_CREATED_VALUE = 'design';
 // original element in". Also a data-c* attribute, so the writer preserves it.
 export const CC_EDITABLE_ATTR = 'data-cc-editable';
 export const CC_EDITABLE_VALUE = 'free';
+// Marker for a freely-movable element (media/insert/converted original) that the user PINNED in place:
+// it keeps its current absolute geometry but Moveable releases it, so it stays exactly where it sits
+// instead of jumping back to flow. Orthogonal to CC_EDITABLE: "static" now means locked-in-place.
+export const CC_LOCKED_ATTR = 'data-cc-locked';
+export const CC_LOCKED_VALUE = 'true';
 // Onlook editor attributes that must never be written into the user's source.
 const ONLOOK_ATTR_RE = /^data-o(id|iid|did|cname|nlook)/i;
 
@@ -227,7 +232,7 @@ export async function applyHtmlStyleEdit(
 /** Sets attributes (e.g. src/alt) on the source element identified by `oid`. */
 export async function applyHtmlAttrEdit(
     oid: string | undefined,
-    attributes: Record<string, string>,
+    attributes: Record<string, string | null>,
     pageFile: string,
 ): Promise<HtmlWriteResult> {
     const loaded = await loadDoc(pageFile);
@@ -243,10 +248,48 @@ export async function applyHtmlAttrEdit(
     }
     for (const [k, v] of Object.entries(attributes)) {
         if (ONLOOK_ATTR_RE.test(k)) continue;
-        el.setAttribute(k, v);
+        if (v === null) el.removeAttribute(k); // null = drop the attribute
+        else el.setAttribute(k, v);
     }
     ensureCcIds(loaded.doc);
     return writeDoc(loaded.path, loaded.doc);
+}
+
+/**
+ * Lifts the element identified by `oid` OUT of its current parent and appends it to <body>, the shared
+ * canvas layer. Sets the given inline styles (absolute + document-space left/top/width/height) and the
+ * data-cc-editable marker. This is what makes z-order and free movement work GLOBALLY: a freed object
+ * trapped inside a positioned card (its own stacking context) can never paint above/below siblings of
+ * that card; moving it to body puts every freed object in one stacking context. The caller reloads the
+ * frame so the live DOM re-renders from this corrected source (code is the source of truth).
+ */
+export async function applyHtmlReparentToBody(
+    oid: string | undefined,
+    styles: Record<string, string>,
+    pageFile: string,
+): Promise<HtmlWriteResult> {
+    const loaded = await loadDoc(pageFile);
+    if ('error' in loaded) return { ok: false, reason: loaded.error };
+    const { doc } = loaded;
+    if (!doc.body) return { ok: false, reason: 'not-found' };
+    const el = elementForOid(doc, oid);
+    if (!el) {
+        console.warn('[html-writeback] no source element for oid', oid, 'in', pageFile);
+        return { ok: false, reason: 'not-found' };
+    }
+    // Stamp durable ids so the moved node (and every sibling whose positional index shifts after the
+    // move) keeps a stable identity for future edits.
+    ensureCcIds(doc);
+    if (el.parentElement !== doc.body) {
+        doc.body.appendChild(el); // move to the top canvas layer
+    }
+    for (const [prop, value] of Object.entries(styles)) {
+        const kebab = prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+        if (value) el.style.setProperty(kebab, value);
+        else el.style.removeProperty(kebab);
+    }
+    el.setAttribute(CC_EDITABLE_ATTR, CC_EDITABLE_VALUE);
+    return writeDoc(loaded.path, doc);
 }
 
 /**

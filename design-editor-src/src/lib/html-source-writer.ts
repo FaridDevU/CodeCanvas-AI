@@ -158,7 +158,7 @@ function removeAttr(node: P5Node, name: string, s: MagicString): void {
 export function writeAttrEdit(
     source: string,
     oid: string | undefined,
-    attributes: Record<string, string>,
+    attributes: Record<string, string | null>,
 ): string | null {
     const parsed = parseSource(source);
     if (!parsed) return null;
@@ -167,7 +167,11 @@ export function writeAttrEdit(
     const s = new MagicString(source);
     for (const [k, v] of Object.entries(attributes)) {
         if (ONLOOK_ATTR_RE.test(k)) continue;
-        if (!setAttr(node, k, v, s)) return null;
+        if (v === null) {
+            removeAttr(node, k, s); // null = drop the attribute (e.g. revert to static)
+        } else if (!setAttr(node, k, v, s)) {
+            return null;
+        }
     }
     migrateCcIds(parsed, s);
     return s.toString();

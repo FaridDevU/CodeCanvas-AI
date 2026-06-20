@@ -27,9 +27,25 @@ export type IFrameView = HTMLIFrameElement & {
     isLoading: () => boolean;
 } & PromisifiedPendpalChildMethods;
 
+// Penpal child method names. The fallback proxy seeds its target with these so
+// spread/Object.assign actually copy them; a bare Proxy over {} copies nothing.
+const PENPAL_CHILD_METHOD_NAMES: (keyof PromisifiedPendpalChildMethods)[] = [
+    'processDom', 'getElementAtLoc', 'getElementByDomId', 'setFrameId', 'setBranchId',
+    'getElementIndex', 'getComputedStyleByDomId', 'updateElementInstance', 'getFirstOnlookElement',
+    'setElementType', 'getElementType', 'getParentElement', 'getChildrenCount', 'getOffsetParent',
+    'getActionLocation', 'getActionElement', 'getInsertLocation', 'getRemoveAction', 'getTheme',
+    'setTheme', 'startDrag', 'drag', 'dragAbsolute', 'endDragAbsolute', 'endDrag', 'endAllDrag',
+    'startEditingText', 'editText', 'stopEditingText', 'updateStyle', 'insertElement',
+    'removeElement', 'moveElement', 'groupElements', 'ungroupElements', 'insertImage',
+    'removeImage', 'isChildTextEditable', 'handleBodyReady', 'captureScreenshot', 'buildLayerTree',
+];
+
 // Creates a proxy that provides safe fallback methods for any property access
 const createSafeFallbackMethods = (): PromisifiedPendpalChildMethods => {
-    return new Proxy({} as PromisifiedPendpalChildMethods, {
+    const target = Object.fromEntries(
+        PENPAL_CHILD_METHOD_NAMES.map((name) => [name, async () => undefined]),
+    ) as PromisifiedPendpalChildMethods;
+    return new Proxy(target, {
         get(_target, prop: string | symbol) {
             if (typeof prop === 'symbol') return undefined;
 

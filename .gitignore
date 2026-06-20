@@ -34,7 +34,19 @@ test/componentFixtures/.screenshots/*
 dist
 .playwright-cli
 .playwright-mcp
+# CodeCanvas: tooling local de agentes (no es parte del producto)
 .claude/
+.codex/
+.agents/
+.cursor/
+
+# CodeCanvas: notas de proyecto y artefactos de test CDP (no es parte del producto)
+PROYECTO_*.md
+scripts/cc-*.png
+scripts/cdp-*.png
+scripts/verify-*.png
+scripts/*.log
+
 .agents/agents/*.local.md
 .github/agents/*.local.md
 .agents/agents/*.local.agent.md

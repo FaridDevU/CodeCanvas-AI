@@ -6,10 +6,13 @@ import { makeAutoObservable } from 'mobx';
 import { getActiveProject } from '@/lib/design-session';
 import {
     applyHtmlAttrEdit,
+    applyHtmlReparentToBody,
     CC_CREATED_ATTR,
     CC_CREATED_VALUE,
     CC_EDITABLE_ATTR,
     CC_EDITABLE_VALUE,
+    CC_LOCKED_ATTR,
+    CC_LOCKED_VALUE,
     pageFileForPathname,
 } from '@/lib/html-writeback';
 import type { EditorEngine } from '../engine';
@@ -21,6 +24,11 @@ const NON_CONVERTIBLE_TAGS = new Set([
     'html', 'head', 'body', 'script', 'style', 'template', 'meta', 'link', 'base', 'title', 'noscript',
 ]);
 
+// Mid-point for z-order. "Traer al frente" climbs above it, "enviar al fondo" sinks below it but never
+// below 1 — staying positive so an element can't disappear behind an opaque card's white background
+// (a negative z-index paints behind the page content = the element vanishes). Word-like layering only.
+const Z_BASE = 1000;
+
 export class ElementsManager {
     private _hovered: DomElement | undefined;
     private _selected: DomElement[] = [];
@@ -29,33 +37,87 @@ export class ElementsManager {
     // content (hero/card/h1/p) never becomes freely movable. Resolved async (getActionElement reads
     // the live attribute) since DomElement doesn't carry arbitrary attributes.
     selectedIsDesignCreated = false;
+    // True when the single selected element is an ORIGINAL converted to free editing (data-cc-editable),
+    // as opposed to a Design-created insert (media/box/text). Only these can be reverted to static.
+    selectedIsConverted = false;
+    // True when the single selected element is freely-editable BUT pinned in place (data-cc-locked):
+    // it keeps its absolute geometry and Moveable releases it. Drives the "static" half of the toggle.
+    selectedIsLocked = false;
+    // Oids pinned-in-place this session (mirrors locallyEditableOids for the lock state).
+    private lockedOids = new Set<string>();
+    // Highest z-index handed out this session by "traer al frente". Climbs above Z_BASE so each call
+    // tops everything previously fronted. ponytail: per-session counter, not a true sibling max — re-
+    // click "al frente" if a value persisted from a past session outranks it.
+    private zTop = Z_BASE;
+    // Lowest z-index handed out by "enviar al fondo". Sinks below Z_BASE (floored at 1, never negative)
+    // so each call goes under everything previously sent back without vanishing behind opaque content.
+    private zBottom = Z_BASE;
     // Oids of ORIGINAL elements converted to free editing this session. Lets the Moveable gate light up
     // immediately after a conversion (no reload), while the persistent data-cc-editable marker (written
     // to the source) is what survives across sessions.
     private locallyEditableOids = new Set<string>();
+    // Subset of locallyEditableOids that are CONVERTED ORIGINALS (data-cc-editable), so "Volver a
+    // estático" is offered for them but never for inserted media/box/text.
+    private convertedOids = new Set<string>();
 
     constructor(private editorEngine: EditorEngine) {
         makeAutoObservable(this);
     }
 
-    /** Whether the (single) selected element can already be freely moved/resized by Moveable. */
+    /** Computed position of the single selection ('static' for flow elements). */
+    private get selectedPosition(): string | undefined {
+        const el = this._selected.length === 1 ? this._selected[0] : null;
+        return el?.styles?.computed?.position;
+    }
+
+    /** Whether the selection is taken out of flow (Moveable can only drive absolute/fixed boxes). */
+    private get selectedIsAbsolute(): boolean {
+        const p = this.selectedPosition;
+        return p === 'absolute' || p === 'fixed';
+    }
+
+    /** Whether the (single) selected element is currently movable/resizable by Moveable. Requires it to
+     *  be out of flow (absolute/fixed): a flow img/video can't be dragged until it's pinned. Locked
+     *  elements keep their geometry but are NOT movable, so they read as static here. */
     get selectedIsFreelyEditable(): boolean {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el) return false;
+        if (this.selectedIsLocked) return false;
+        if (!this.selectedIsAbsolute) return false;
         const tag = el.tagName?.toLowerCase();
         if (tag === 'img' || tag === 'video') return true;
         return this.selectedIsDesignCreated;
     }
 
-    /** Whether "Convertir a edición libre" should be offered for the current selection. */
-    get selectedCanConvertToEditable(): boolean {
+    /** A static (in-flow) element that can be PINNED absolute to make it movable — originals AND media.
+     *  Excludes elements already out of flow (those are either movable or locked, handled elsewhere). */
+    private get selectedCanPin(): boolean {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el) return false;
+        if (this.selectedIsAbsolute) return false; // already positioned
         const tag = el.tagName?.toLowerCase();
         if (!tag || NON_CONVERTIBLE_TAGS.has(tag)) return false;
-        if (this.selectedIsFreelyEditable) return false; // already movable
         const rect = el.rect as { width?: number; height?: number } | undefined;
         return !!rect && (rect.width ?? 0) >= 1 && (rect.height ?? 0) >= 1;
+    }
+
+    /** Whether "Convertir a edición libre" should be offered: a static element that can become movable
+     *  — either a locked one (unlock in place) or a flow element (pin absolute). */
+    get selectedCanConvertToEditable(): boolean {
+        if (this.selectedIsFreelyEditable) return false;
+        return this.selectedIsLocked || this.selectedCanPin;
+    }
+
+    /** Whether "Volver a estático" should be offered: any freely-movable element (media, insert, or
+     *  converted original) — making it static pins it in place (keeps geometry, releases Moveable). */
+    get selectedCanRevertToStatic(): boolean {
+        return this.selectedIsFreelyEditable;
+    }
+
+    /** Whether z-order ("traer al frente" / "enviar al fondo") applies: any positioned element (free or
+     *  pinned). z-index only affects out-of-flow boxes that can overlap. */
+    get selectedCanReorder(): boolean {
+        return this._selected.length === 1 && (this.selectedIsAbsolute || this.selectedIsLocked);
     }
 
     // Arrow-field methods (same pattern as HistoryManager.push / OverlayManager.undebouncedRefresh):
@@ -65,19 +127,34 @@ export class ElementsManager {
         this.selectedIsDesignCreated = value;
     };
 
+    private setSelectedIsConverted = (value: boolean) => {
+        this.selectedIsConverted = value;
+    };
+
+    private setSelectedIsLocked = (value: boolean) => {
+        this.selectedIsLocked = value;
+    };
+
     private resolveDesignCreated = async (domEl: DomElement | null) => {
         if (!domEl) {
             this.setSelectedIsDesignCreated(false);
+            this.setSelectedIsConverted(false);
+            this.setSelectedIsLocked(false);
             return;
         }
         const tag = domEl.tagName?.toLowerCase();
+        const localLocked = !!domEl.oid && this.lockedOids.has(domEl.oid);
         if (tag === 'img' || tag === 'video') {
             this.setSelectedIsDesignCreated(true);
+            this.setSelectedIsConverted(false); // media inserts aren't "convertible originals"
+            this.setSelectedIsLocked(localLocked);
             return;
         }
         // Converted this session -> recognized immediately (the source marker may not be live yet).
         if (domEl.oid && this.locallyEditableOids.has(domEl.oid)) {
             this.setSelectedIsDesignCreated(true);
+            this.setSelectedIsConverted(this.convertedOids.has(domEl.oid));
+            this.setSelectedIsLocked(localLocked);
             return;
         }
         try {
@@ -86,14 +163,21 @@ export class ElementsManager {
                 | { attributes?: Record<string, string> }
                 | undefined;
             const attrs = actionEl?.attributes ?? {};
-            const isEditable =
-                attrs[CC_CREATED_ATTR] === CC_CREATED_VALUE || attrs[CC_EDITABLE_ATTR] === CC_EDITABLE_VALUE;
+            const isLocked = attrs[CC_LOCKED_ATTR] === CC_LOCKED_VALUE || localLocked;
+            if (isLocked && domEl.oid) this.lockedOids.add(domEl.oid);
+            this.setSelectedIsLocked(isLocked);
+            const isConverted = attrs[CC_EDITABLE_ATTR] === CC_EDITABLE_VALUE;
+            const isEditable = attrs[CC_CREATED_ATTR] === CC_CREATED_VALUE || isConverted;
             // Cache the durable recognition into the session set so later re-selections (and click()'s
             // synchronous fast-path) don't have to re-read the attribute and won't flicker the gate.
             if (isEditable && domEl.oid) this.locallyEditableOids.add(domEl.oid);
+            if (isConverted && domEl.oid) this.convertedOids.add(domEl.oid);
             this.setSelectedIsDesignCreated(isEditable);
+            this.setSelectedIsConverted(isConverted);
         } catch {
             this.setSelectedIsDesignCreated(false);
+            this.setSelectedIsConverted(false);
+            this.setSelectedIsLocked(localLocked);
         }
     };
 
@@ -108,54 +192,84 @@ export class ElementsManager {
     convertSelectedToEditable = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el) return;
-        if (!this.selectedCanConvertToEditable) {
-            toast.warning('Este elemento no se puede convertir a edición libre.');
-            return;
+        try {
+            // A locked (pinned-in-place) element just gets released — keep its geometry, no re-pinning.
+            if (this.selectedIsLocked) {
+                await this.unlockSelected(el);
+                return;
+            }
+            if (!this.selectedCanPin) {
+                toast.warning('Este elemento no se puede convertir a edición libre.');
+                return;
+            }
+            await this.convertOriginalToEditable(el);
+        } catch (err) {
+            // Surface the failure instead of swallowing the rejected promise (the old `void` path made
+            // a broken convert look like "nothing happened" with no toast and no log).
+            console.error('[CC] convertSelectedToEditable failed', err);
+            toast.error('No se pudo convertir a edición libre.');
         }
+    };
+
+    // Reads the element's CURRENT computed typography/color and returns them as inline styles, so they
+    // survive the move out of its parent: inherited color/font and descendant-selector rules (e.g.
+    // `.hero h1 { color:#fff }`) don't follow the node to <body>. Best-effort; on failure the element
+    // keeps editing but may restyle.
+    private capturePreservedStyles = async (el: DomElement): Promise<Record<string, string>> => {
+        const out: Record<string, string> = {};
+        try {
+            const view = this.editorEngine.frames.get(el.frameId)?.view;
+            const cs = (await view?.getComputedStyleByDomId(el.domId)) as Record<string, string> | null;
+            if (!cs) return out;
+            const read = (camel: string, kebab: string) => cs[camel] ?? cs[kebab];
+            // [outputKey (camelCase, the writer kebab-cases it), computedCamel, computedKebab]
+            const props: Array<[string, string, string]> = [
+                ['color', 'color', 'color'],
+                ['fontFamily', 'fontFamily', 'font-family'],
+                ['fontSize', 'fontSize', 'font-size'],
+                ['fontWeight', 'fontWeight', 'font-weight'],
+                ['fontStyle', 'fontStyle', 'font-style'],
+                ['lineHeight', 'lineHeight', 'line-height'],
+                ['letterSpacing', 'letterSpacing', 'letter-spacing'],
+                ['textAlign', 'textAlign', 'text-align'],
+                ['textTransform', 'textTransform', 'text-transform'],
+            ];
+            for (const [outKey, camel, kebab] of props) {
+                const v = read(camel, kebab);
+                // Always keep color/fonts; skip pure-default values for the optional ones to avoid clutter.
+                if (!v) continue;
+                if ((v === 'normal' || v === 'none' || v === 'start') && outKey !== 'color') continue;
+                out[outKey] = v;
+            }
+        } catch {
+            /* best-effort: appearance may shift if computed styles aren't reachable */
+        }
+        return out;
+    };
+
+    // Converts an ORIGINAL flow element to free editing by LIFTING it to the shared <body> canvas layer
+    // (reparent) and pinning it absolute at its current DOCUMENT position. Reparenting is what lets every
+    // freed object share ONE stacking context, so z-order and free movement work globally instead of the
+    // element being trapped inside its card's stacking context. Source-only mutation + reload: the file
+    // is the source of truth and the live DOM re-renders from it (no fragile cross-parent live surgery).
+    private convertOriginalToEditable = async (el: DomElement) => {
         const rect = el.rect as { left: number; top: number; width: number; height: number } | undefined;
         if (!rect) return;
 
-        const view = this.editorEngine.frames.get(el.frameId)?.view;
-
-        // left/top relative to the offset parent (the containing block once position:absolute), so the
-        // element stays exactly where it is. Falls back to document coords (offset parent ~ body @0,0).
-        let offX = 0;
-        let offY = 0;
-        try {
-            const op = (await view?.getOffsetParent(el.domId)) as { rect?: { left: number; top: number } } | undefined;
-            if (op?.rect) {
-                offX = op.rect.left;
-                offY = op.rect.top;
-            }
-        } catch {
-            /* no offset parent resolvable -> document coords */
-        }
-
-        const left = Math.round(rect.left - offX);
-        const top = Math.round(rect.top - offY);
+        // Document-space coords (rect is in frame/document space; <body> is the offset parent at 0,0), so
+        // the element stays exactly where it sits visually after the move to body.
+        const left = Math.round(rect.left);
+        const top = Math.round(rect.top);
         const width = Math.max(1, Math.round(rect.width));
         const height = Math.max(1, Math.round(rect.height));
 
-        // Light up the Moveable gate immediately for the CURRENT oid (it may be a positional index if
-        // the page wasn't instrumented yet; the durable cc-id is added after the writes below).
-        if (el.oid) this.locallyEditableOids.add(el.oid);
+        if (el.oid) {
+            this.locallyEditableOids.add(el.oid);
+            this.convertedOids.add(el.oid);
+        }
         this.setSelectedIsDesignCreated(true);
+        this.setSelectedIsConverted(true);
 
-        // 1. Pin geometry (live + source + undo) through the normal style pipeline. AWAIT it: this both
-        // applies position:absolute to the live DOM and writes it to the source file (and migrates the
-        // page to durable data-cc-id). We must let it finish before step 2 so the two writebacks don't
-        // race on the SAME .html file (the bug where the style landed but data-cc-editable did not).
-        await this.editorEngine.style.updateMultiple({
-            position: 'absolute',
-            left: `${left}px`,
-            top: `${top}px`,
-            width: `${width}px`,
-            height: `${height}px`,
-        });
-
-        // 2. Persist the durable marker to the source so the conversion survives a reload/restart. Now
-        // serialized AFTER the style write, so it reads the style-patched file and adds the attribute
-        // instead of clobbering it. Awaited so a later reload sees data-cc-editable="free".
         const frame = this.editorEngine.frames.get(el.frameId)?.frame;
         let pathname = '/';
         try {
@@ -163,47 +277,135 @@ export class ElementsManager {
         } catch {
             /* keep default */
         }
-        await applyHtmlAttrEdit(el.oid ?? undefined, { [CC_EDITABLE_ATTR]: CC_EDITABLE_VALUE }, pageFileForPathname(pathname));
 
-        // 3. Re-select the freshly-converted element. The style write above may have assigned a durable
-        // cc-id (oid drifts from a positional index to the cc-id), so the live re-fetch carries the NEW
-        // oid: register THAT in the editable set too, otherwise a later move/resize re-selection (which
-        // sees the cc-id oid) wouldn't recognize the element and the legacy overlay would come back.
-        // Re-fetching also gives the click-rect the post-conversion computed styles (absolute + left/top)
-        // the Moveable gate and baseline depend on.
-        await this.reselectAfterConvert(el);
+        // Snapshot inherited/parent-dependent appearance (color, fonts) so the element doesn't restyle
+        // when it leaves its parent (e.g. `.hero h1`'s white color won't follow it to <body>).
+        const preserved = await this.capturePreservedStyles(el);
+
+        // Bring it to the front as it lands on the canvas, so it's visible above existing positioned
+        // siblings (a converted element with no z would otherwise hide behind a z-indexed card/hero).
+        this.zTop += 1;
+
+        // Reparent to <body> + pin absolute + stamp the marker, all in the source. Awaited so the reload
+        // below reads the moved node.
+        const result = await applyHtmlReparentToBody(
+            el.oid ?? undefined,
+            {
+                ...preserved,
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+                zIndex: String(this.zTop),
+            },
+            pageFileForPathname(pathname),
+        );
+        // Don't claim success (or reload) if the source write failed: roll the optimistic state back so
+        // the menu still offers "convertir" instead of a half-converted element that can't be fixed.
+        if (!result.ok) {
+            if (el.oid) {
+                this.locallyEditableOids.delete(el.oid);
+                this.convertedOids.delete(el.oid);
+            }
+            this.setSelectedIsDesignCreated(false);
+            this.setSelectedIsConverted(false);
+            console.error('[CC] reparent-to-body failed', result);
+            toast.error('No se pudo convertir a edición libre.');
+            return;
+        }
+
+        // Reload so the live DOM rebuilds from the corrected source. The element's domId regenerates, so
+        // selection clears (the user re-clicks); the overlay refresh keeps the canvas in sync.
+        const view = this.editorEngine.frames.get(el.frameId)?.view;
+        try {
+            view?.reload();
+        } catch {
+            /* best-effort */
+        }
         void this.editorEngine.overlay.refresh();
-        toast.success('Elemento convertido a edición libre.');
+        toast.success('Elemento convertido a edición libre (en el lienzo).');
+    };
+
+    /**
+     * "Volver a estático" = PIN IN PLACE. Keeps the element's current absolute geometry but stamps
+     * data-cc-locked so Moveable releases it — it stays exactly where the user dropped it instead of
+     * jumping back to flow (the old strip-geometry behavior). Works for media, inserts, and converted
+     * originals alike. Reverse of unlockSelected.
+     */
+    convertSelectedToStatic = async () => {
+        const el = this._selected.length === 1 ? this._selected[0] : null;
+        if (!el || !this.selectedCanRevertToStatic) return;
+        try {
+            if (el.oid) this.lockedOids.add(el.oid);
+            this.setSelectedIsLocked(true);
+            await applyHtmlAttrEdit(
+                el.oid ?? undefined,
+                { [CC_LOCKED_ATTR]: CC_LOCKED_VALUE },
+                this.pageFileFor(el),
+            );
+            void this.editorEngine.overlay.refresh();
+            toast.success('Elemento fijado en su lugar.');
+        } catch (err) {
+            console.error('[CC] convertSelectedToStatic failed', err);
+            toast.error('No se pudo fijar el elemento.');
+        }
+    };
+
+    // Releases a pinned (data-cc-locked) element back to free editing, keeping its geometry. Throws are
+    // handled by the public caller (convertSelectedToEditable).
+    private unlockSelected = async (el: DomElement) => {
+        if (el.oid) this.lockedOids.delete(el.oid);
+        this.setSelectedIsLocked(false);
+        await applyHtmlAttrEdit(el.oid ?? undefined, { [CC_LOCKED_ATTR]: null }, this.pageFileFor(el));
+        void this.editorEngine.overlay.refresh();
+        toast.success('Elemento liberado para edición libre.');
+    };
+
+    // Resolves the source .html file backing the element's current page (frame URL -> pathname).
+    private pageFileFor = (el: DomElement): string => {
+        const frame = this.editorEngine.frames.get(el.frameId)?.frame;
+        let pathname = '/';
+        try {
+            if (frame?.url) pathname = new URL(frame.url).pathname;
+        } catch {
+            /* keep default */
+        }
+        return pageFileForPathname(pathname);
+    };
+
+    /** "Traer al frente": z-index above everything fronted this session. */
+    bringSelectedToFront = async () => {
+        const el = this._selected.length === 1 ? this._selected[0] : null;
+        if (!el || !this.selectedCanReorder) return;
+        try {
+            this.zTop += 1;
+            await this.editorEngine.style.updateMultiple({ zIndex: String(this.zTop) });
+            toast.success('Traído al frente.');
+        } catch (err) {
+            console.error('[CC] bringSelectedToFront failed', err);
+            toast.error('No se pudo traer al frente.');
+        }
+    };
+
+    /** "Enviar al fondo": z-index below everything sent back this session (the last one wins the bottom). */
+    sendSelectedToBack = async () => {
+        const el = this._selected.length === 1 ? this._selected[0] : null;
+        if (!el || !this.selectedCanReorder) return;
+        try {
+            this.zBottom = Math.max(1, this.zBottom - 1);
+            await this.editorEngine.style.updateMultiple({ zIndex: String(this.zBottom) });
+            toast.success('Enviado al fondo.');
+        } catch (err) {
+            console.error('[CC] sendSelectedToBack failed', err);
+            toast.error('No se pudo enviar al fondo.');
+        }
     };
 
     /** Marks an oid as freely editable for this session (used after re-selection so oid drift across
      *  a write/reload doesn't drop the Moveable gate). No-op for empty oids. */
     markOidEditable = (oid: string | undefined) => {
         if (oid) this.locallyEditableOids.add(oid);
-    };
-
-    // Re-fetches the just-converted element from the live DOM until its computed position is absolute
-    // (the conversion's style update is async), then re-selects it so overlay/selection reflect the new
-    // geometry. Also registers the (possibly migrated) oid as editable. Best-effort: on timeout it
-    // leaves the existing selection in place.
-    private reselectAfterConvert = async (prev: DomElement) => {
-        const view = this.editorEngine.frames.get(prev.frameId)?.view;
-        if (!view) return;
-        const deadline = Date.now() + 2000;
-        while (Date.now() < deadline) {
-            try {
-                const fresh = (await view.getElementByDomId(prev.domId, true)) as DomElement | null;
-                const pos = fresh?.styles?.computed?.position;
-                if (fresh && (pos === 'absolute' || pos === 'fixed')) {
-                    this.markOidEditable(fresh.oid ?? undefined);
-                    this.click([{ ...fresh, frameId: prev.frameId }]);
-                    return;
-                }
-            } catch {
-                /* frame busy applying the style; keep polling */
-            }
-            await new Promise((r) => setTimeout(r, 80));
-        }
     };
 
     get hovered() {
@@ -288,7 +490,9 @@ export class ElementsManager {
             const tag = single.tagName?.toLowerCase();
             if (tag === 'img' || tag === 'video' || (single.oid && this.locallyEditableOids.has(single.oid))) {
                 this.selectedIsDesignCreated = true;
+                this.selectedIsConverted = !!single.oid && this.convertedOids.has(single.oid);
             }
+            this.selectedIsLocked = !!single.oid && this.lockedOids.has(single.oid);
         }
         // Still resolve async to cover the cross-session case (attribute read via getActionElement).
         void this.resolveDesignCreated(single);
@@ -432,5 +636,7 @@ export class ElementsManager {
     private clearSelectedElements() {
         this.selected = [];
         this.selectedIsDesignCreated = false;
+        this.selectedIsConverted = false;
+        this.selectedIsLocked = false;
     }
 }

@@ -134,12 +134,15 @@ export const MoveableSelectionLayer = observer(() => {
     const tag = el?.tagName?.toLowerCase();
     const isMovableMedia = tag === 'img' || tag === 'video';
     const isDesignCreated = editorEngine.elements.selectedIsDesignCreated;
+    // Pinned-in-place ("static") elements keep their geometry but must NOT get Moveable handles.
+    const isLocked = editorEngine.elements.selectedIsLocked;
     const active = !!(
         el &&
         clickRect &&
         hasRealSize &&
         isAbsolute &&
         (isMovableMedia || isDesignCreated) &&
+        !isLocked &&
         editorEngine.state.editorMode === EditorMode.DESIGN &&
         !editorEngine.text.isEditing
         // NOTE: do NOT gate on rightClickMenuOpen here. This layer now hosts its OWN context menu

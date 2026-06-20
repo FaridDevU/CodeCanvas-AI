@@ -124,6 +124,13 @@ export class DesignEditorBridge extends Disposable {
 	private pendingWrites = 0;
 	private readonly resetSavedScheduler: RunOnceScheduler;
 
+	// fsPath -> expiry time for files Design itself just wrote. Their onDidFilesChange events are
+	// suppressed so a Design edit doesn't echo back to the iframe as an external change (which would
+	// reload/re-sync the very frame we just patched). Restores deliberately don't stamp: the preview
+	// SHOULD reload to reflect a rollback.
+	private readonly recentSelfWrites = new Map<string, number>();
+	private static readonly SELF_WRITE_ECHO_MS = 1500;
+
 	get saveState(): DesignSaveState { return this._saveState; }
 
 	constructor(
@@ -279,8 +286,15 @@ export class DesignEditorBridge extends Disposable {
 		if (assigned && await this.isPortReachable(assigned)) {
 			return { port: assigned, alreadyRunning: true };
 		}
-		// Terminal exists but the server is still booting: report the assigned port.
-		if (assigned && this.devTerminals.has(key)) {
+		// Terminal exists but the port isn't reachable: the server is either still booting or it
+		// crashed (the shell outlives the `serve` process). Re-issue serve in the existing terminal so
+		// a crashed server recovers; if it's merely booting, the new `serve` errors on EADDRINUSE and
+		// the original keeps the port. ponytail: re-run heuristic, add a liveness probe if it gets noisy.
+		const existing = assigned ? this.devTerminals.get(key) : undefined;
+		if (assigned && existing) {
+			this.terminalService.setActiveInstance(existing);
+			await this.terminalGroupService.showPanel(false);
+			await existing.sendText(`npx --yes serve -n --cors -l ${assigned} .`, true);
 			return { port: assigned, alreadyRunning: true };
 		}
 
@@ -402,10 +416,10 @@ export class DesignEditorBridge extends Disposable {
 	}
 
 	private looksBinary(buffer: VSBuffer): boolean {
-		const checkLength = Math.min(512, buffer.byteLength);
-		for (let i = 0; i < checkLength; i++) {
-			const byte = buffer.buffer[i];
-			if (byte === 0) {
+		// Scan the whole buffer for a NUL: a binary whose first NUL sits past byte 512 (common) was
+		// being misread as text. The buffer is already in memory, so a linear scan is cheap vs the read.
+		for (let i = 0; i < buffer.byteLength; i++) {
+			if (buffer.buffer[i] === 0) {
 				return true;
 			}
 		}
@@ -419,6 +433,7 @@ export class DesignEditorBridge extends Disposable {
 		const buffer = encoding === 'base64' ? decodeBase64(content) : VSBuffer.fromString(content);
 		this.beginWrite();
 		try {
+			this.recentSelfWrites.set(uri.fsPath, Date.now() + DesignEditorBridge.SELF_WRITE_ECHO_MS);
 			await this.fileService.writeFile(uri, buffer);
 			this.endWrite(true);
 			return { ok: true };
@@ -719,8 +734,21 @@ export class DesignEditorBridge extends Disposable {
 	private forwardFileChanges(added: readonly URI[], updated: readonly URI[], deleted: readonly URI[]): void {
 		const changes: { type: 'add' | 'change' | 'remove'; path: string; rootPath: string }[] = [];
 
+		const now = Date.now();
+		const isSelfWrite = (uri: URI): boolean => {
+			const expiry = this.recentSelfWrites.get(uri.fsPath);
+			if (expiry === undefined) {
+				return false;
+			}
+			this.recentSelfWrites.delete(uri.fsPath); // one event per write
+			return expiry >= now;
+		};
+
 		const collect = (uris: readonly URI[], type: 'add' | 'change' | 'remove') => {
 			for (const uri of uris) {
+				if (isSelfWrite(uri)) {
+					continue;
+				}
 				for (const rootKey of this.watchedRoots) {
 					const rootUri = URI.parse(rootKey);
 					if (!extUriBiasedIgnorePathCase.isEqualOrParent(uri, rootUri)) {

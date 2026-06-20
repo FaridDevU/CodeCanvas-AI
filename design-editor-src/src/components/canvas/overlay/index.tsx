@@ -34,6 +34,7 @@ export const Overlay = observer(() => {
         isSingleSelection &&
         !!singleRect &&
         (isMovableMedia || editorEngine.elements.selectedIsDesignCreated) &&
+        !editorEngine.elements.selectedIsLocked &&
         (singleRectPosition === 'absolute' || singleRectPosition === 'fixed') &&
         editorEngine.state.editorMode === EditorMode.DESIGN &&
         !isTextEditing;

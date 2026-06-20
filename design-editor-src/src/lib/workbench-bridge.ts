@@ -73,6 +73,9 @@ function ensureListener(): void {
     if (listening) return;
     listening = true;
     window.addEventListener('message', (event: MessageEvent) => {
+        // Only trust the workbench host (our parent). The user's app preview is a nested child
+        // iframe; without this it could forge a response for a guessed sequential id.
+        if (event.source !== window.parent) return;
         const data = event.data;
         if (!data || data.type !== 'codecanvas:bridge-response') return;
         const entry = pending.get(data.id);
@@ -123,6 +126,8 @@ function ensureEventListener(): void {
     if (eventListening) return;
     eventListening = true;
     window.addEventListener('message', (event: MessageEvent) => {
+        // Same trust boundary as bridge-response: only the host, never the nested preview.
+        if (event.source !== window.parent) return;
         const data = event.data;
         if (!data || data.type !== 'codecanvas:bridge-event') return;
         if (data.event === 'fs-change' && Array.isArray(data.changes)) {

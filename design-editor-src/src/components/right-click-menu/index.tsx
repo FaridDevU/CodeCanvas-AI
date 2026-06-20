@@ -150,6 +150,25 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
                 icon: <Icons.Box className="mr-2 h-4 w-4" />,
             });
         }
+        if (editorEngine.elements.selectedCanRevertToStatic) {
+            editing.push({
+                label: 'Volver a estático',
+                action: () => void editorEngine.elements.convertSelectedToStatic(),
+                icon: <Icons.Box className="mr-2 h-4 w-4" />,
+            });
+        }
+        if (editorEngine.elements.selectedCanReorder) {
+            editing.push({
+                label: 'Traer al frente',
+                action: () => void editorEngine.elements.bringSelectedToFront(),
+                icon: <Icons.ArrowUp className="mr-2 h-4 w-4" />,
+            });
+            editing.push({
+                label: 'Enviar al fondo',
+                action: () => void editorEngine.elements.sendSelectedToBack(),
+                icon: <Icons.ArrowDown className="mr-2 h-4 w-4" />,
+            });
+        }
         if (isText) {
             editing.push({
                 label: 'Editar texto',
