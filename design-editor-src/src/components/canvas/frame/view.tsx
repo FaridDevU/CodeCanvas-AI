@@ -416,6 +416,49 @@ export const FrameComponent = observer(
                 );
             }, [editorEngine.state.editorMode]);
 
+            // Forward keyboard shortcuts from inside the preview iframe to the parent document. When the
+            // canvas has focus the focused node lives in the iframe, so key events fire there and never
+            // reach react-hotkeys-hook (it listens on the parent document) — that's why Delete and Ctrl+Z
+            // only worked from the toolbar buttons. The iframe is same-origin, so we listen on its
+            // document and re-dispatch matching events onto the parent. Re-attaches on every reload.
+            useEffect(() => {
+                const iframe = iframeRef.current;
+                if (!iframe) return;
+                const onKeyDown = (e: KeyboardEvent) => {
+                    if (editorEngine.text.isEditing) return; // typing in the page: leave it alone
+                    const t = e.target as HTMLElement | null;
+                    const tag = t?.tagName?.toLowerCase();
+                    if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+                    const isShortcut = e.key === 'Delete' || e.key === 'Backspace' || e.ctrlKey || e.metaKey;
+                    if (!isShortcut) return;
+                    if (e.key === 'Delete' || e.key === 'Backspace') e.preventDefault();
+                    document.dispatchEvent(
+                        new KeyboardEvent('keydown', {
+                            key: e.key, code: e.code,
+                            ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey,
+                            bubbles: true, cancelable: true,
+                        }),
+                    );
+                };
+                const attach = () => {
+                    try {
+                        iframe.contentDocument?.addEventListener('keydown', onKeyDown, true);
+                    } catch {
+                        /* cross-origin (shouldn't happen for the local preview) */
+                    }
+                };
+                iframe.addEventListener('load', attach);
+                attach(); // cover the already-loaded case
+                return () => {
+                    iframe.removeEventListener('load', attach);
+                    try {
+                        iframe.contentDocument?.removeEventListener('keydown', onKeyDown, true);
+                    } catch {
+                        /* ignore */
+                    }
+                };
+            }, []);
+
             return (
                 <WebPreview className="relative isolate !rounded-none !border-0 !bg-transparent">
                     {showFrame && <DeviceFrame type={showFrame} />}
