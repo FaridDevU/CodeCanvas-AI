@@ -96,16 +96,17 @@ const EditorLayout = observer(() => {
 			<div className="h-screen w-screen flex flex-row select-none relative overflow-hidden">
 				<Canvas />
 
-				<div className="absolute top-0 w-full">
+				{/* z-[3100]: stay above react-moveable's control box (z 3000) so it can't steal clicks. */}
+				<div className="absolute top-0 w-full z-[3100]">
 					<TopBar />
 				</div>
 
-				<div ref={leftPanelRef} className="absolute top-10 left-0 h-[calc(100%-40px)] z-50">
+				<div ref={leftPanelRef} className="absolute top-10 left-0 h-[calc(100%-40px)] z-[3100]">
 					<LeftPanel />
 				</div>
 
 				<div
-					className="absolute top-10 z-49"
+					className="absolute top-10 z-[3100]"
 					style={{
 						left: toolbarLeft,
 						right: toolbarRight,

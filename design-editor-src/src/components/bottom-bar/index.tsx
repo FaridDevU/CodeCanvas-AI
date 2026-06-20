@@ -125,8 +125,11 @@ export const BottomBar = observer(() => {
         },
     ];
 
+    // z-[3100] keeps the toolbar above react-moveable's control box (z-index:3000). The canvas isn't a
+    // stacking context, so the moveable box otherwise paints over this bar and steals clicks (e.g.
+    // switching to the hand tool kept selecting the image underneath).
     return (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-4 overflow-hidden">
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-4 overflow-hidden z-[3100]">
             <AnimatePresence mode="wait">
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
