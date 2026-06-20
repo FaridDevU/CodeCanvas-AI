@@ -29,6 +29,51 @@ const NON_CONVERTIBLE_TAGS = new Set([
 // (a negative z-index paints behind the page content = the element vanishes). Word-like layering only.
 const Z_BASE = 1000;
 
+// Reads the REAL z-index extent of positioned elements in the live preview (same-origin iframe), so
+// z-order is computed against what's actually on the page instead of a blind per-session counter (which
+// failed when an element already outranked the counter — e.g. an image stuck behind a box that had a
+// higher z). Returns the max/min explicit z among positioned elements other than `excludeDomId`;
+// falls back to Z_BASE when nothing carries an explicit z.
+function readFrameZExtent(view: any, excludeDomId?: string): { max: number; min: number } | null {
+    try {
+        const doc: Document | undefined = view?.contentDocument;
+        const win = doc?.defaultView;
+        if (!doc || !win) return null;
+        let max = -Infinity;
+        let min = Infinity;
+        doc.querySelectorAll<HTMLElement>('body *').forEach((node) => {
+            if (excludeDomId && node.getAttribute('data-odid') === excludeDomId) return;
+            const cs = win.getComputedStyle(node);
+            if (cs.position === 'static') return; // z-index has no effect on in-flow boxes
+            const z = parseInt(cs.zIndex, 10);
+            if (!Number.isFinite(z)) return; // 'auto' / unset
+            if (z > max) max = z;
+            if (z < min) min = z;
+        });
+        return {
+            max: Number.isFinite(max) ? max : Z_BASE,
+            min: Number.isFinite(min) ? min : Z_BASE,
+        };
+    } catch {
+        return null;
+    }
+}
+
+// Apply a z-index straight to the live element (same-origin iframe) so it reorders immediately without a
+// reload — mirrors the Moveable layer's direct inline patch.
+function applyZIndexDirect(view: any, domId: string, z: number): boolean {
+    try {
+        const doc: Document | undefined = view?.contentDocument;
+        if (!doc) return false;
+        const node = doc.querySelector(`[data-odid="${domId}"]`) as HTMLElement | null;
+        if (!node) return false;
+        node.style.setProperty('z-index', String(z));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export class ElementsManager {
     private _hovered: DomElement | undefined;
     private _selected: DomElement[] = [];
@@ -374,13 +419,18 @@ export class ElementsManager {
         return pageFileForPathname(pathname);
     };
 
-    /** "Traer al frente": z-index above everything fronted this session. */
+    /** "Traer al frente": z-index above every positioned element actually on the page. */
     bringSelectedToFront = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el || !this.selectedCanReorder) return;
         try {
-            this.zTop += 1;
-            await this.editorEngine.style.updateMultiple({ zIndex: String(this.zTop) });
+            const view = this.editorEngine.frames.get(el.frameId)?.view;
+            const extent = readFrameZExtent(view, el.domId);
+            // Top the REAL max on the page, and never below our session high-water mark.
+            const target = Math.max(this.zTop, extent?.max ?? Z_BASE) + 1;
+            this.zTop = target;
+            await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
+            applyZIndexDirect(view, el.domId, target);
             toast.success('Traído al frente.');
         } catch (err) {
             console.error('[CC] bringSelectedToFront failed', err);
@@ -388,13 +438,18 @@ export class ElementsManager {
         }
     };
 
-    /** "Enviar al fondo": z-index below everything sent back this session (the last one wins the bottom). */
+    /** "Enviar al fondo": z-index below every positioned element on the page, floored at 1 so it never
+     *  vanishes behind page content. */
     sendSelectedToBack = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el || !this.selectedCanReorder) return;
         try {
-            this.zBottom = Math.max(1, this.zBottom - 1);
-            await this.editorEngine.style.updateMultiple({ zIndex: String(this.zBottom) });
+            const view = this.editorEngine.frames.get(el.frameId)?.view;
+            const extent = readFrameZExtent(view, el.domId);
+            const target = Math.max(1, Math.min(this.zBottom, extent?.min ?? Z_BASE) - 1);
+            this.zBottom = target;
+            await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
+            applyZIndexDirect(view, el.domId, target);
             toast.success('Enviado al fondo.');
         } catch (err) {
             console.error('[CC] sendSelectedToBack failed', err);
