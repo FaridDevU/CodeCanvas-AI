@@ -653,12 +653,18 @@ export class ElementsManager {
     }
 
     private async deleteSelected(selected: DomElement[]) {
+        // Phase 1: resolve every element's remove action while the frame views are still alive.
+        // Running a delete reloads the frame, which tears down the view; if we interleaved resolve
+        // and run, the second getRemoveAction would hit a dead view and the batch would drop every
+        // element after the first. Resolving up front keeps batch delete whole. For HTML this is also
+        // index-safe: applyHtmlRemove resolves by data-cc-id (target.oid), not document position.
+        const pending: RemoveElementAction[] = [];
         for (const selectedEl of selected) {
             const frameId = selectedEl.frameId;
             const frameData = this.editorEngine.frames.get(frameId);
             if (!frameData?.view) {
                 console.error('No frame view found');
-                continue; // batch delete: skip this one, keep deleting the rest
+                continue; // batch delete: skip this one, keep resolving the rest
             }
             const { shouldDelete, error } = await this.shouldDelete(selectedEl, frameData);
 
@@ -704,11 +710,16 @@ export class ElementsManager {
                 removeAction.codeBlock = metadata.code;
             }
 
-            // Await so this element's history entry is pushed inside the open group (the next loop
-            // iteration / endGroup must not race ahead of it).
+            pending.push(removeAction);
+        }
+
+        // Phase 2: run them. Awaited so each history entry lands inside the open group (one Ctrl+Z
+        // restores the whole batch). The per-run frame reload no longer breaks anything: every
+        // remove action was already resolved above.
+        for (const removeAction of pending) {
             try {
                 await this.editorEngine.action.run(removeAction);
-                debugLog('[CC-DELETE] writeback result: action dispatched', { oid });
+                debugLog('[CC-DELETE] writeback result: action dispatched');
             } catch (err) {
                 console.error('[CC-DELETE] Error deleting element', err);
             }
