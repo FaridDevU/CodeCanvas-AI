@@ -30,34 +30,6 @@ import { TOGGLE_DESIGN_FULL_WINDOW_COMMAND_ID } from './designFullWindowMode.js'
 // action, so the user sees this instead of a fake "Save" button.
 export type DesignSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-// A checkpoint label: the session's first snapshot ("Inicial") vs. user-created ones ("Manual").
-export type DesignCheckpointLabel = 'initial' | 'manual';
-
-// Metadata exposed to the native Checkpoints panel (the file contents stay inside the bridge).
-export interface DesignCheckpointInfo {
-	readonly id: number;
-	readonly name: string;
-	readonly label: DesignCheckpointLabel;
-	readonly createdAt: number;
-	readonly fileCount: number;
-	readonly isCurrent: boolean;
-	readonly isBase: boolean;
-}
-
-interface DesignCheckpoint {
-	readonly id: number;
-	readonly name: string;
-	readonly label: DesignCheckpointLabel;
-	readonly createdAt: number;
-	readonly files: Map<string, string>;
-}
-
-interface RestoreResult {
-	readonly restored: number;
-	readonly failed: number;
-	readonly total: number;
-}
-
 interface BridgeRequest {
 	readonly type: 'codecanvas:bridge-request';
 	readonly id: number;
@@ -99,23 +71,6 @@ export class DesignEditorBridge extends Disposable {
 	private readonly devTerminals = new Map<string, ITerminalInstance>();
 	// Ports assigned to static HTML apps (served with `npx serve`).
 	private readonly staticPorts = new Map<string, number>();
-
-	// --- Session checkpoint history (safety layer) ---
-	// In-memory snapshots of the editable web files (html/css). Local, never written to the repo.
-	// The first one is the "Inicial" checkpoint; "Crear checkpoint" appends manual ones. Capped at
-	// MAX_CHECKPOINTS: the oldest non-initial checkpoint is dropped first, keeping the initial so
-	// "Revertir cambios de Design" always has a base to return to.
-	private readonly checkpoints: DesignCheckpoint[] = [];
-	private nextCheckpointId = 1;
-	private currentCheckpointId: number | undefined;
-	private static readonly MAX_CHECKPOINTS = 15;
-	private static readonly SNAPSHOT_EXTS = ['.html', '.htm', '.css'];
-	private static readonly SNAPSHOT_MAX_FILE_BYTES = 2_000_000;
-	private static readonly SNAPSHOT_MAX_FILES = 500;
-	private static readonly SNAPSHOT_MAX_DEPTH = 6;
-
-	private readonly _onDidChangeCheckpoints = this._register(new Emitter<void>());
-	readonly onDidChangeCheckpoints: Event<void> = this._onDidChangeCheckpoints.event;
 
 	// --- Save status ---
 	private readonly _onDidChangeSaveState = this._register(new Emitter<DesignSaveState>());
@@ -209,13 +164,6 @@ export class DesignEditorBridge extends Disposable {
 			case 'fs.copy': return this.copy(String(params.sourcePath ?? ''), String(params.targetPath ?? ''), params.overwrite !== false);
 			case 'fs.watch': return this.watch(String(params.rootPath ?? ''));
 			case 'workbench.chat.openWithContext': return this.openWorkbenchChat(params as unknown as OpenChatPayload);
-			case 'checkpoint.isEnabled': return this.hasHtmlApp();
-			case 'checkpoint.list': return Promise.resolve(this.getCheckpoints());
-			case 'checkpoint.ensureInitial': return this.ensureInitialCheckpoint().then(() => this.getCheckpoints());
-			case 'checkpoint.create': return this.createCheckpoint();
-			case 'checkpoint.restore': return this.restoreCheckpoint(Number(params.id));
-			case 'checkpoint.rollback': return this.rollback();
-			case 'checkpoint.delete': return Promise.resolve(this.deleteCheckpoint(Number(params.id)));
 			default: return Promise.reject(new Error(`Unknown bridge method: ${method}`));
 		}
 	}
@@ -428,8 +376,6 @@ export class DesignEditorBridge extends Disposable {
 
 	private async writeFile(path: string, content: string, encoding: 'utf8' | 'base64') {
 		const uri = this.resolveWorkspacePath(path);
-		// Snapshot the initial session checkpoint before the very first edit touches disk.
-		await this.ensureInitialCheckpoint();
 		const buffer = encoding === 'base64' ? decodeBase64(content) : VSBuffer.fromString(content);
 		this.beginWrite();
 		try {
@@ -469,195 +415,6 @@ export class DesignEditorBridge extends Disposable {
 		}
 		this._saveState = state;
 		this._onDidChangeSaveState.fire(state);
-	}
-
-	// --- Session checkpoint / rollback (safety layer) ---
-
-	hasCheckpoint(): boolean {
-		return this.checkpoints.length > 0;
-	}
-
-	/** Whether the analyzed workspace has at least one editable static HTML app (gates the panel). */
-	async hasHtmlApp(): Promise<boolean> {
-		try {
-			const analysis = await this.analyzer.analyze();
-			return analysis.apps.some(app => app.framework === 'html' && app.editable);
-		} catch {
-			return false;
-		}
-	}
-
-	/** Metadata for the native panel; never exposes the snapshot file maps. */
-	getCheckpoints(): DesignCheckpointInfo[] {
-		const baseId = this.baseCheckpointId();
-		return this.checkpoints.map(c => ({
-			id: c.id,
-			name: c.name,
-			label: c.label,
-			createdAt: c.createdAt,
-			fileCount: c.files.size,
-			isCurrent: c.id === this.currentCheckpointId,
-			isBase: c.id === baseId,
-		}));
-	}
-
-	/** The checkpoint "Revertir cambios de Design" returns to: the initial one (kept pinned). */
-	private baseCheckpointId(): number | undefined {
-		return (this.checkpoints.find(c => c.label === 'initial') ?? this.checkpoints[0])?.id;
-	}
-
-	/** Creates the initial session checkpoint if the history is empty (called on Design open and,
-	 *  defensively, before the first edit). */
-	async ensureInitialCheckpoint(): Promise<void> {
-		if (this.checkpoints.length === 0) {
-			await this.addCheckpoint('initial');
-		}
-	}
-
-	/** Pins the current state as a new checkpoint and makes it the current one. */
-	async createCheckpoint(): Promise<DesignCheckpointInfo> {
-		// The first ever checkpoint is the session's "Inicial" even if the user clicks the button.
-		return this.addCheckpoint(this.checkpoints.length === 0 ? 'initial' : 'manual');
-	}
-
-	private async addCheckpoint(label: DesignCheckpointLabel): Promise<DesignCheckpointInfo> {
-		const files = await this.buildSnapshot();
-		const id = this.nextCheckpointId++;
-		this.checkpoints.push({ id, name: `Checkpoint ${id}`, label, createdAt: Date.now(), files });
-		this.currentCheckpointId = id;
-		this.enforceLimit();
-		console.log('[CC-CHECKPOINT] create', { id, label, files: files.size, total: this.checkpoints.length });
-		this.notifyCheckpointChange();
-		return this.getCheckpoints().find(c => c.id === id)!;
-	}
-
-	/** Deletes a manual checkpoint. Never deletes the base (initial) one — it's needed for
-	 *  "Revertir al inicial". If the deleted checkpoint was current, current moves to the most recent
-	 *  remaining checkpoint (or the base). */
-	deleteCheckpoint(id: number): { deleted: boolean; reason?: string; checkpoints: DesignCheckpointInfo[] } {
-		if (id === this.baseCheckpointId()) {
-			return { deleted: false, reason: 'base', checkpoints: this.getCheckpoints() };
-		}
-		const idx = this.checkpoints.findIndex(c => c.id === id);
-		if (idx === -1) {
-			return { deleted: false, reason: 'not-found', checkpoints: this.getCheckpoints() };
-		}
-		this.checkpoints.splice(idx, 1);
-		if (this.currentCheckpointId === id) {
-			this.currentCheckpointId = this.checkpoints[this.checkpoints.length - 1]?.id ?? this.baseCheckpointId();
-		}
-		console.log('[CC-CHECKPOINT] delete', { id, total: this.checkpoints.length, current: this.currentCheckpointId });
-		this.notifyCheckpointChange();
-		return { deleted: true, checkpoints: this.getCheckpoints() };
-	}
-
-	/** Notifies listeners (native) and the iframe panel that the checkpoint history changed, so the
-	 *  Checkpoints tab refreshes even when a checkpoint was created via the keyboard shortcut. */
-	private notifyCheckpointChange(): void {
-		this._onDidChangeCheckpoints.fire();
-		this.iframe.contentWindow?.postMessage({ type: 'codecanvas:bridge-event', event: 'checkpoint-change' }, '*');
-	}
-
-	/** Drops the oldest non-initial checkpoint while over the limit, so the initial stays as the
-	 *  rollback base. Decision: total cap is MAX_CHECKPOINTS including the initial. */
-	private enforceLimit(): void {
-		while (this.checkpoints.length > DesignEditorBridge.MAX_CHECKPOINTS) {
-			const idx = this.checkpoints.findIndex(c => c.label !== 'initial');
-			if (idx === -1) {
-				break; // only the initial remains; never drop it
-			}
-			this.checkpoints.splice(idx, 1);
-		}
-	}
-
-	/** Restores a specific checkpoint by id and marks it as current. */
-	async restoreCheckpoint(id: number): Promise<RestoreResult> {
-		const checkpoint = this.checkpoints.find(c => c.id === id);
-		if (!checkpoint) {
-			return { restored: 0, failed: 0, total: 0 };
-		}
-		const result = await this.writeSnapshot(checkpoint.files);
-		this.currentCheckpointId = id;
-		console.log('[CC-CHECKPOINT] restore', { id, files: checkpoint.files.size, restored: result.restored, failed: result.failed });
-		this.notifyCheckpointChange();
-		return result;
-	}
-
-	/** "Revertir cambios de Design": restores the base (initial) checkpoint. */
-	async rollback(): Promise<RestoreResult> {
-		const baseId = this.baseCheckpointId();
-		if (baseId === undefined) {
-			return { restored: 0, failed: 0, total: 0 };
-		}
-		return this.restoreCheckpoint(baseId);
-	}
-
-	/** Writes a snapshot back to disk. Files created after the snapshot are left untouched (we never
-	 *  delete files outside the snapshot). */
-	private async writeSnapshot(files: Map<string, string>): Promise<RestoreResult> {
-		const entries = [...files];
-		let restored = 0;
-		let failed = 0;
-		this.beginWrite();
-		for (const [fsPath, text] of entries) {
-			try {
-				await this.fileService.writeFile(URI.file(fsPath), VSBuffer.fromString(text));
-				restored++;
-			} catch {
-				failed++;
-			}
-		}
-		this.endWrite(failed === 0);
-		return { restored, failed, total: entries.length };
-	}
-
-	private async buildSnapshot(): Promise<Map<string, string>> {
-		const snapshot = new Map<string, string>();
-		for (const folder of this.workspaceContextService.getWorkspace().folders) {
-			if (snapshot.size >= DesignEditorBridge.SNAPSHOT_MAX_FILES) {
-				break;
-			}
-			await this.collectSnapshotFiles(folder.uri, 0, snapshot);
-		}
-		return snapshot;
-	}
-
-	private async collectSnapshotFiles(dir: URI, depth: number, snapshot: Map<string, string>): Promise<void> {
-		if (depth > DesignEditorBridge.SNAPSHOT_MAX_DEPTH || snapshot.size >= DesignEditorBridge.SNAPSHOT_MAX_FILES) {
-			return;
-		}
-		let children;
-		try {
-			children = (await this.fileService.resolve(dir)).children ?? [];
-		} catch {
-			return;
-		}
-		for (const child of children) {
-			if (snapshot.size >= DesignEditorBridge.SNAPSHOT_MAX_FILES) {
-				return;
-			}
-			if (child.isDirectory) {
-				// Skip deps/build output and dot folders so we never copy node_modules or large trees.
-				if (IGNORED_DIRS.has(child.name) || child.name.startsWith('.')) {
-					continue;
-				}
-				await this.collectSnapshotFiles(child.resource, depth + 1, snapshot);
-				continue;
-			}
-			const lower = child.name.toLowerCase();
-			if (!DesignEditorBridge.SNAPSHOT_EXTS.some(ext => lower.endsWith(ext))) {
-				continue;
-			}
-			try {
-				const file = await this.fileService.readFile(child.resource);
-				if (file.value.byteLength > DesignEditorBridge.SNAPSHOT_MAX_FILE_BYTES) {
-					continue;
-				}
-				snapshot.set(child.resource.fsPath, file.value.toString());
-			} catch {
-				// unreadable file: skip it
-			}
-		}
 	}
 
 	private async readDir(path: string) {

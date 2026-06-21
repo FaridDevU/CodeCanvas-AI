@@ -1,16 +1,11 @@
 import { useEditorEngine } from '@/components/store/editor';
 import { transKeys } from '@/i18n/keys';
-import { getActiveProject } from '@/lib/design-session';
-import { workbench } from '@/lib/workbench-bridge';
 import { LeftPanelTabValue } from '@onlook/models';
 import { Icons } from '@onlook/ui/icons';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
-import { useEffect } from 'react';
-import { toast } from 'sonner';
 import { BrandTab } from './brand-tab';
-import { CheckpointsTab } from './checkpoints-tab';
 import { HelpButton } from './help-button';
 import { ImagesTab } from './image-tab';
 import { LayersTab } from './layers-tab';
@@ -21,7 +16,6 @@ interface PanelTab {
     value: LeftPanelTabValue;
     icon: React.ReactNode;
     label?: any;
-    // Literal label used when the tab has no i18n key (e.g. the local-only Checkpoints tab).
     labelText?: string;
     disabled?: boolean;
 }
@@ -51,52 +45,12 @@ const tabs: PanelTab[] =
         // Branches tab removed: the local Design editor works on a single local project.
     ];
 
-// Session checkpoints (safety layer) only apply to static HTML projects; shown as a real tab
-// alongside the others, not a floating button.
-const checkpointsTab: PanelTab = {
-    value: LeftPanelTabValue.CHECKPOINTS,
-    icon: <Icons.CounterClockwiseClock className="w-5 h-5" />,
-    labelText: 'Checkpoints',
-};
-
 export const DesignPanel = observer(() => {
     const editorEngine = useEditorEngine();
     const t = useTranslations();
     const isLocked = editorEngine.state.leftPanelLocked;
     const selectedTab = editorEngine.state.leftPanelTab;
-    const isHtml = getActiveProject()?.framework === 'html';
-    const visibleTabs = isHtml ? [...tabs, checkpointsTab] : tabs;
-
-    // Keyboard shortcuts while editing inside the canvas (iframe-focused, where the native
-    // workbench keybinding can't reach). Ctrl+Alt+P = create, Ctrl+Alt+R = revert to initial.
-    // The workbench registers the same shortcuts for when its chrome (not the iframe) has focus.
-    useEffect(() => {
-        if (!isHtml) {
-            return;
-        }
-        const onKey = (e: KeyboardEvent) => {
-            if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) {
-                return;
-            }
-            if (e.code === 'KeyP') {
-                e.preventDefault();
-                void workbench.checkpoints
-                    .create()
-                    .then((cp) => toast.success(`${cp.name} creado`, { description: `${cp.fileCount} archivos` }))
-                    .catch(() => undefined);
-            } else if (e.code === 'KeyR') {
-                e.preventDefault();
-                if (window.confirm('¿Revertir al checkpoint inicial? Los archivos nuevos no se borrarán.')) {
-                    void workbench.checkpoints
-                        .rollback()
-                        .then((r) => toast.success('Cambios revertidos', { description: `${r.restored} archivos restaurados` }))
-                        .catch(() => undefined);
-                }
-            }
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [isHtml]);
+    const visibleTabs = tabs;
 
     // Click-only, deterministic toggle. The old hover-to-open / hover-to-close behavior left the panel
     // hanging open (and "slow to close") because clicking an open tab merely unlocked it instead of
@@ -150,7 +104,6 @@ export const DesignPanel = observer(() => {
                         {selectedTab === LeftPanelTabValue.BRAND && <BrandTab />}
                         {selectedTab === LeftPanelTabValue.PAGES && <PagesTab />}
                         {selectedTab === LeftPanelTabValue.IMAGES && <ImagesTab />}
-                        {selectedTab === LeftPanelTabValue.CHECKPOINTS && <CheckpointsTab />}
                     </div>
                 </div>
             )}
