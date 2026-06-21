@@ -1,4 +1,5 @@
 import { useEditorEngine } from '@/components/store/editor';
+import { getActiveProject } from '@/lib/design-session';
 import { SystemTheme } from '@onlook/models/assets';
 import type { TailwindColor } from '@onlook/models/style';
 import {
@@ -134,8 +135,12 @@ export const ColorPickerContent: React.FC<ColorPickerProps> = ({
         ],
     });
     const [selectedStopId, setSelectedStopId] = useState<string>('stop-1');
+    // Static-HTML projects have no Tailwind/brand palette, so the Brand tab opens empty ("no colors").
+    // Default to Custom (the hex/gradient picker) there so a color is always pickable.
     const [activeTab, setActiveTab] = useState<TabValue>(
-        isCreatingNewColor ? TabValue.CUSTOM : TabValue.BRAND,
+        isCreatingNewColor || getActiveProject()?.framework === 'html'
+            ? TabValue.CUSTOM
+            : TabValue.BRAND,
     );
 
 
@@ -621,12 +626,14 @@ export const ColorPickerContent: React.FC<ColorPickerProps> = ({
                 {!isCreatingNewColor && (
                     <TabsList className="bg-transparent px-2 m-0 gap-2 justify-between w-full">
                         <div className="flex gap-1">
-                            <TabsTrigger
-                                value={TabValue.BRAND}
-                                className="flex items-center justify-center px-1.5 py-1 text-xs rounded-md bg-transparent hover:bg-background-secondary hover:text-foreground-primary transition-colors"
-                            >
-                                Brand
-                            </TabsTrigger>
+                            {getActiveProject()?.framework !== 'html' && (
+                                <TabsTrigger
+                                    value={TabValue.BRAND}
+                                    className="flex items-center justify-center px-1.5 py-1 text-xs rounded-md bg-transparent hover:bg-background-secondary hover:text-foreground-primary transition-colors"
+                                >
+                                    Brand
+                                </TabsTrigger>
+                            )}
 
                             <TabsTrigger
                                 value={TabValue.CUSTOM}
