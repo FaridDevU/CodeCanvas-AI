@@ -693,6 +693,12 @@ export class ElementsManager {
                     console.error('[CC-DELETE] Error deleting element', err);
                 });
         }
+
+        // The selected elements are gone now: drop the selection + their click rects. Without this the
+        // stale DomElements (and overlay rects) survived the delete, so the next click re-selected the
+        // already-removed elements until the frame finished reloading.
+        this.editorEngine.overlay.state.removeClickRects();
+        this.clearSelectedElements();
     }
 
     private async shouldDelete(
