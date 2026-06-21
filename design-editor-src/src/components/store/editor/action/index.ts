@@ -28,21 +28,24 @@ export class ActionManager {
     }
 
     async undo() {
-        const action = this.editorEngine.history.undo();
-
-        if (action == null) {
+        const actions = this.editorEngine.history.undo();
+        if (actions.length === 0) {
             return;
         }
-        await this.editorEngine.code.write(action);
+        for (const action of actions) {
+            await this.editorEngine.code.write(action);
+        }
         this.editorEngine.posthog.capture('undo');
     }
 
     async redo() {
-        const action = this.editorEngine.history.redo();
-        if (action == null) {
+        const actions = this.editorEngine.history.redo();
+        if (actions.length === 0) {
             return;
         }
-        await this.editorEngine.code.write(action);
+        for (const action of actions) {
+            await this.editorEngine.code.write(action);
+        }
         this.editorEngine.posthog.capture('redo');
     }
 

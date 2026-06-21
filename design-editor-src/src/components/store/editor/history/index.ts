@@ -20,15 +20,32 @@ interface NotInTransaction {
 
 type TransactionState = InTransaction | NotInTransaction;
 
+// A batch (e.g. multi-delete) tags every action it pushes with the same group id, so a single
+// undo/redo reverses the whole batch instead of one element at a time. Untagged actions undo one
+// at a time exactly as before.
+type GroupedAction = Action & { __groupId?: number };
+
 export class HistoryManager {
+    private currentGroupId: number | null = null;
+    private groupCounter = 0;
+
     constructor(
         private editorEngine: EditorEngine,
-        private undoStack: Action[] = [],
-        private redoStack: Action[] = [],
+        private undoStack: GroupedAction[] = [],
+        private redoStack: GroupedAction[] = [],
         private inTransaction: TransactionState = { type: TransactionType.NOT_IN_TRANSACTION },
     ) {
         makeAutoObservable(this);
     }
+
+    /** Opens a batch: every action pushed until endGroup() shares one group id and undoes atomically. */
+    startGroup = () => {
+        this.currentGroupId = ++this.groupCounter;
+    };
+
+    endGroup = () => {
+        this.currentGroupId = null;
+    };
 
     get canUndo() {
         return this.undoStack.length > 0;
@@ -79,6 +96,9 @@ export class HistoryManager {
             this.redoStack = [];
         }
 
+        if (this.currentGroupId != null) {
+            (action as GroupedAction).__groupId = this.currentGroupId;
+        }
         this.undoStack.push(action);
         await this.editorEngine.code.write(action);
 
@@ -104,36 +124,53 @@ export class HistoryManager {
         }
     };
 
-    undo = (): Action | null => {
+    // Pops the top entry and, if it's part of a group, every consecutive entry sharing its group id.
+    // Returns them newest-first (the order to undo). The popped originals are moved to redoStack.
+    undo = (): Action[] => {
         if (this.inTransaction.type === TransactionType.IN_TRANSACTION) {
             this.commitTransaction();
         }
 
         const top = this.undoStack.pop();
         if (top == null) {
-            return null;
+            return [];
         }
-        const action = undoAction(top);
-
-        this.redoStack.push(top);
-
-        return action;
+        const batch = this.popBatch(this.undoStack, top);
+        for (const a of batch) {
+            this.redoStack.push(a);
+        }
+        return batch.map((a) => undoAction(a));
     };
 
-    redo = (): Action | null => {
+    redo = (): Action[] => {
         if (this.inTransaction.type === TransactionType.IN_TRANSACTION) {
             this.commitTransaction();
         }
 
         const top = this.redoStack.pop();
         if (top == null) {
-            return null;
+            return [];
         }
-
-        const action = transformRedoAction(top);
-        this.undoStack.push(action);
-        return action;
+        // undo() pushed the batch onto redoStack newest-first, so popping yields oldest-first here:
+        // re-apply and re-stack in that chronological order to mirror the original sequence.
+        const batch = this.popBatch(this.redoStack, top);
+        for (const a of batch) {
+            this.undoStack.push(a);
+        }
+        return batch.map((a) => transformRedoAction(a));
     };
+
+    /** Given an already-popped top, pops the rest of its group off the stack. Returns [top, ...rest]. */
+    private popBatch(stack: GroupedAction[], top: GroupedAction): GroupedAction[] {
+        const batch = [top];
+        const groupId = top.__groupId;
+        if (groupId != null) {
+            while (stack.length > 0 && stack[stack.length - 1].__groupId === groupId) {
+                batch.push(stack.pop()!);
+            }
+        }
+        return batch;
+    }
 
     clear = () => {
         this.undoStack = [];

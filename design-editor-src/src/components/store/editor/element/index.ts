@@ -636,6 +636,23 @@ export class ElementsManager {
             return;
         }
 
+        // Group the whole batch so a single Ctrl+Z restores every deleted element at once instead of
+        // one element per undo. A single-element delete is just a group of one (same as before).
+        this.editorEngine.history.startGroup();
+        try {
+            await this.deleteSelected(selected);
+        } finally {
+            this.editorEngine.history.endGroup();
+        }
+
+        // The selected elements are gone now: drop the selection + their click rects. Without this the
+        // stale DomElements (and overlay rects) survived the delete, so the next click re-selected the
+        // already-removed elements until the frame finished reloading.
+        this.editorEngine.overlay.state.removeClickRects();
+        this.clearSelectedElements();
+    }
+
+    private async deleteSelected(selected: DomElement[]) {
         for (const selectedEl of selected) {
             const frameId = selectedEl.frameId;
             const frameData = this.editorEngine.frames.get(frameId);
@@ -687,18 +704,15 @@ export class ElementsManager {
                 removeAction.codeBlock = metadata.code;
             }
 
-            this.editorEngine.action.run(removeAction)
-                .then(() => debugLog('[CC-DELETE] writeback result: action dispatched', { oid }))
-                .catch((err) => {
-                    console.error('[CC-DELETE] Error deleting element', err);
-                });
+            // Await so this element's history entry is pushed inside the open group (the next loop
+            // iteration / endGroup must not race ahead of it).
+            try {
+                await this.editorEngine.action.run(removeAction);
+                debugLog('[CC-DELETE] writeback result: action dispatched', { oid });
+            } catch (err) {
+                console.error('[CC-DELETE] Error deleting element', err);
+            }
         }
-
-        // The selected elements are gone now: drop the selection + their click rects. Without this the
-        // stale DomElements (and overlay rects) survived the delete, so the next click re-selected the
-        // already-removed elements until the frame finished reloading.
-        this.editorEngine.overlay.state.removeClickRects();
-        this.clearSelectedElements();
     }
 
     private async shouldDelete(
