@@ -419,7 +419,61 @@ export class ElementsManager {
         return pageFileForPathname(pathname);
     };
 
-    /** "Traer al frente": z-index above every positioned element actually on the page. */
+    /** True when the element is a DIRECT child of <body> (the shared canvas stacking layer). An element
+     *  freed INSIDE a card stays trapped in that card's stacking context, so z-order can't lift it above
+     *  sibling cards until it's reparented to body. */
+    private isBodyChild = async (el: DomElement): Promise<boolean> => {
+        const view = this.editorEngine.frames.get(el.frameId)?.view;
+        const parent = (await view?.getParentElement(el.domId)) as DomElement | null;
+        return parent?.tagName?.toLowerCase() === 'body';
+    };
+
+    /** Reparents the element to <body> at its CURRENT document position with the given z-index (source +
+     *  reload). Used so reordering a trapped (nested-free) element lifts it onto the shared canvas layer,
+     *  where z-order is global. Mirrors convertOriginalToEditable's reparent. Returns false on write fail. */
+    private reparentToBodyAtCurrentPos = async (el: DomElement, zIndex: number): Promise<boolean> => {
+        const rect = el.rect as { left: number; top: number; width: number; height: number } | undefined;
+        if (!rect) return false;
+        const left = Math.round(rect.left);
+        const top = Math.round(rect.top);
+        const width = Math.max(1, Math.round(rect.width));
+        const height = Math.max(1, Math.round(rect.height));
+        const frame = this.editorEngine.frames.get(el.frameId)?.frame;
+        let pathname = '/';
+        try {
+            if (frame?.url) pathname = new URL(frame.url).pathname;
+        } catch {
+            /* keep default */
+        }
+        const preserved = await this.capturePreservedStyles(el);
+        const result = await applyHtmlReparentToBody(
+            el.oid ?? undefined,
+            {
+                ...preserved,
+                position: 'absolute',
+                left: `${left}px`,
+                top: `${top}px`,
+                width: `${width}px`,
+                height: `${height}px`,
+                zIndex: String(zIndex),
+            },
+            pageFileForPathname(pathname),
+        );
+        if (!result.ok) {
+            console.error('[CC] reparent-for-reorder failed', result);
+            return false;
+        }
+        try {
+            this.editorEngine.frames.get(el.frameId)?.view?.reload();
+        } catch {
+            /* best-effort */
+        }
+        void this.editorEngine.overlay.refresh();
+        return true;
+    };
+
+    /** "Traer al frente": z-index above every positioned element actually on the page. A nested-free
+     *  element is reparented to <body> first so the z-order is global, not trapped in its card. */
     bringSelectedToFront = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el || !this.selectedCanReorder) return;
@@ -429,6 +483,11 @@ export class ElementsManager {
             // Top the REAL max on the page, and never below our session high-water mark.
             const target = Math.max(this.zTop, extent?.max ?? Z_BASE) + 1;
             this.zTop = target;
+            if (!(await this.isBodyChild(el))) {
+                const ok = await this.reparentToBodyAtCurrentPos(el, target);
+                toast[ok ? 'success' : 'error'](ok ? 'Traído al frente.' : 'No se pudo traer al frente.');
+                return;
+            }
             await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
             applyZIndexDirect(view, el.domId, target);
             toast.success('Traído al frente.');
@@ -439,7 +498,7 @@ export class ElementsManager {
     };
 
     /** "Enviar al fondo": z-index below every positioned element on the page, floored at 1 so it never
-     *  vanishes behind page content. */
+     *  vanishes behind page content. A nested-free element is reparented to <body> first. */
     sendSelectedToBack = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
         if (!el || !this.selectedCanReorder) return;
@@ -448,6 +507,11 @@ export class ElementsManager {
             const extent = readFrameZExtent(view, el.domId);
             const target = Math.max(1, Math.min(this.zBottom, extent?.min ?? Z_BASE) - 1);
             this.zBottom = target;
+            if (!(await this.isBodyChild(el))) {
+                const ok = await this.reparentToBodyAtCurrentPos(el, target);
+                toast[ok ? 'success' : 'error'](ok ? 'Enviado al fondo.' : 'No se pudo enviar al fondo.');
+                return;
+            }
             await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
             applyZIndexDirect(view, el.domId, target);
             toast.success('Enviado al fondo.');
