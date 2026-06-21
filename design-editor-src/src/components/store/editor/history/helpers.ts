@@ -202,25 +202,28 @@ export function getCleanedElement(
     // `oid` param: undo passes the original id (stable across undo/redo), copy/paste passes a fresh
     // one (no duplicate). JSX elements have no `data-cc-*`, so this whole block is a no-op for them.
     const isHtmlEl = !!copiedEl.attributes['data-cc-id'];
+    const attributes: Record<string, string> = {
+        class: copiedEl.attributes.class ?? '',
+        [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
+        [EditorAttributes.DATA_ONLOOK_ID]: oid,
+        [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
+    };
+    if (isHtmlEl) {
+        // Preserve EVERY original HTML attribute (src, alt, controls, href, data-cc-*, the inline
+        // style where geometry lives, ...) so undo of a delete restores a WORKING element. The old
+        // whitelist kept only class/style/cc-id/cc-created and silently dropped src, leaving empty,
+        // invisible-but-selectable media on the canvas. Skip Onlook's own editor attrs (re-set above)
+        // and pin the identity to the stable oid.
+        for (const [k, v] of Object.entries(copiedEl.attributes)) {
+            if (k.startsWith('data-onlook')) continue;
+            if (k === 'data-cc-id') continue;
+            attributes[k] = v;
+        }
+        attributes['data-cc-id'] = oid;
+    }
     const cleanedEl: ActionElement = {
         tagName: copiedEl.tagName,
-        attributes: {
-            class: copiedEl.attributes.class ?? '',
-            [EditorAttributes.DATA_ONLOOK_DOM_ID]: domId,
-            [EditorAttributes.DATA_ONLOOK_ID]: oid,
-            [EditorAttributes.DATA_ONLOOK_INSERTED]: 'true',
-            ...(isHtmlEl
-                ? {
-                      'data-cc-id': oid,
-                      ...(copiedEl.attributes['data-cc-created']
-                          ? { 'data-cc-created': copiedEl.attributes['data-cc-created'] }
-                          : {}),
-                      ...(copiedEl.attributes['style']
-                          ? { style: copiedEl.attributes['style'] }
-                          : {}),
-                  }
-                : {}),
-        },
+        attributes,
         styles: { ...copiedEl.styles },
         textContent: copiedEl.textContent,
         children: [],
