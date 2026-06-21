@@ -641,13 +641,13 @@ export class ElementsManager {
             const frameData = this.editorEngine.frames.get(frameId);
             if (!frameData?.view) {
                 console.error('No frame view found');
-                return;
+                continue; // batch delete: skip this one, keep deleting the rest
             }
             const { shouldDelete, error } = await this.shouldDelete(selectedEl, frameData);
 
             if (!shouldDelete) {
                 this.emitError(error ?? 'Unknown error');
-                return;
+                continue;
             }
 
             const removeAction: RemoveElementAction | null = await frameData.view.getRemoveAction(
@@ -657,13 +657,13 @@ export class ElementsManager {
 
             if (!removeAction) {
                 this.emitError('Remove action not found. Try refreshing the page.');
-                return;
+                continue;
             }
             const oid = selectedEl.instanceId ?? selectedEl.oid;
             debugLog('[CC-DELETE] selected id', { domId: selectedEl.domId, oid, tag: selectedEl.tagName });
             if (!oid) {
                 this.emitError('OID not found. Try refreshing the page.');
-                return;
+                continue;
             }
 
             // Static HTML projects have no JSX/oid metadata pipeline. The remove-element action is
@@ -674,14 +674,14 @@ export class ElementsManager {
                 const branchData = this.editorEngine.branches.getBranchDataById(selectedEl.branchId);
                 if (!branchData) {
                     this.emitError(`Branch data not found for branchId: ${selectedEl.branchId}. Try refreshing the page.`);
-                    return;
+                    continue;
                 }
 
                 const metadata = await branchData.codeEditor.getJsxElementMetadata(oid);
 
                 if (!metadata?.code) {
                     this.emitError('Code block not found. Try refreshing the page.');
-                    return;
+                    continue;
                 }
 
                 removeAction.codeBlock = metadata.code;
