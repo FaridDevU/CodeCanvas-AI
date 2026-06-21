@@ -17,18 +17,23 @@ import { useTranslations } from 'next-intl';
 import { useRef } from 'react';
 
 /** Reads a picked File into the ImageContentData the insert pipeline expects (data-URL content;
- *  saveAsset slices the base64 and writes it into /assets). */
-async function fileToImageData(file: File): Promise<ImageContentData> {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+ *  saveAsset slices the base64 and writes it into /assets). Uses the native FileReader: the old
+ *  byte-by-byte `String.fromCharCode` + `btoa` loop choked/threw on large files, so videos (tens of
+ *  MB) silently failed to insert while small images worked. */
+function fileToImageData(file: File): Promise<ImageContentData> {
     const mimeType = file.type || getMimeType(file.name);
-    return {
-        fileName: file.name,
-        content: `data:${mimeType};base64,${btoa(binary)}`,
-        mimeType,
-        originPath: '',
-    };
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+            resolve({
+                fileName: file.name,
+                content: typeof reader.result === 'string' ? reader.result : '',
+                mimeType,
+                originPath: '',
+            });
+        reader.onerror = () => reject(reader.error ?? new Error('No se pudo leer el archivo'));
+        reader.readAsDataURL(file);
+    });
 }
 
 export const BottomBar = observer(() => {
