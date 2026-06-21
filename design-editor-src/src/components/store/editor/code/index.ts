@@ -8,7 +8,7 @@ import { makeAutoObservable } from 'mobx';
 import { type EditorEngine } from '@/components/store/editor/engine';
 import { getActiveProject } from '@/lib/design-session';
 import { debugLog } from '@/lib/debug';
-import { applyHtmlInsert, applyHtmlMove, applyHtmlRemove, applyHtmlStyleEdit, applyHtmlTextEdit, pageFileForPathname } from '@/lib/html-writeback';
+import { applyHtmlGroup, applyHtmlInsert, applyHtmlMove, applyHtmlRemove, applyHtmlStyleEdit, applyHtmlTextEdit, applyHtmlUngroup, pageFileForPathname } from '@/lib/html-writeback';
 import {
     getEditTextRequests,
     getGroupRequests,
@@ -150,15 +150,29 @@ export class CodeManager {
                 }
                 break;
             }
-            // Still unsupported structural ops. Don't fail silently: the canvas changes but the file
-            // does not, so warn (non-blocking) that it isn't saved.
+            // Wrap the selected siblings in a new container, persisted to the source. undo() reverses
+            // this with an ungroup-elements carrying the same container oid (stamped as data-cc-id).
+            case 'group-elements': {
+                const pageFile = this.pageFileForFrame(action.parent.frameId);
+                const result = await applyHtmlGroup(
+                    action.container,
+                    action.children.map((c) => c.oid),
+                    pageFile,
+                );
+                if (result.ok) this.reloadFrame(action.parent.frameId);
+                else this.notifyNotSaved('No se pudo agrupar los elementos en el HTML.');
+                break;
+            }
+            case 'ungroup-elements': {
+                const pageFile = this.pageFileForFrame(action.parent.frameId);
+                const result = await applyHtmlUngroup(action.container.oid, pageFile);
+                if (result.ok) this.reloadFrame(action.parent.frameId);
+                else this.notifyNotSaved('No se pudo desagrupar el elemento en el HTML.');
+                break;
+            }
             // Note: media drop/swap/background use insert-element / update-style (both handled), not
             // 'insert-image'/'remove-image' (those only exist as undo/redo inverses and are never
-            // dispatched), so they are intentionally NOT in this list.
-            case 'group-elements':
-            case 'ungroup-elements':
-                this.notifyNotSaved('Esta accion todavia no se guarda en el HTML.');
-                break;
+            // dispatched), so they are intentionally NOT persisted here.
             default:
                 console.log('[html-writeback] action not persisted for static HTML:', action.type);
         }

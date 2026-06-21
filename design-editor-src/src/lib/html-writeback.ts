@@ -162,8 +162,11 @@ function serialize(doc: Document): string {
 
 function elementForOid(doc: Document, oid: string | undefined): HTMLElement | null {
     if (oid === undefined || oid === null || oid === '') return null;
-    // Durable id first (only matches our [a-z0-9] ids, so the selector is safe).
-    if (/^c[a-z0-9]+$/.test(oid)) {
+    // Durable id first. Our cc-ids ('c'+base36) and freshly-minted oids (createOid) both use the
+    // controlled VALID_DATA_ATTR_CHARS alphabet (a-z, 0-9 and -._:), all safe inside a quoted
+    // attribute selector — match by exact data-cc-id. A group container is stamped with its action
+    // oid, so this resolves it for undo/ungroup even though it isn't 'c'-prefixed.
+    if (/^[a-z0-9][a-z0-9\-._:]*$/.test(oid)) {
         const byCc = doc.querySelector(`[${CC_ID_ATTR}="${oid}"]`);
         if (byCc instanceof HTMLElement) return byCc;
     }
@@ -549,5 +552,79 @@ export async function applyHtmlMove(
         return { ok: true, changed: false }; // already in place: skip needless write/reload
     }
     ensureCcIds(doc);
+    return writeDoc(loaded.path, doc);
+}
+
+// --- Group / ungroup (structural) -----------------------------------------------------------
+
+/**
+ * Wraps the elements identified by `childOids` in a new container (a <div> by default), inserted at
+ * the position of the first child in document order. The container is stamped with
+ * data-cc-id = container.oid so undo (ungroup) and reselection find it by the SAME id. All children
+ * must share a parent (validated upstream by getGroupParentId).
+ */
+export async function applyHtmlGroup(
+    container: { oid: string; tagName: string; attributes: Record<string, string> },
+    childOids: (string | undefined)[],
+    pageFile: string,
+): Promise<HtmlWriteResult> {
+    const loaded = await loadDoc(pageFile);
+    if ('error' in loaded) return { ok: false, reason: loaded.error };
+    const { doc } = loaded;
+    ensureCcIds(doc); // stabilize ids before the structural change shifts positions
+    const children = childOids
+        .map((oid) => elementForOid(doc, oid))
+        .filter((el): el is HTMLElement => el != null);
+    if (children.length === 0) return { ok: false, reason: 'not-found' };
+    const parent = children[0].parentElement;
+    if (!parent) return { ok: false, reason: 'not-found' };
+
+    // Group in document order (not selection order) so the markup keeps its visual sequence.
+    const ordered = children
+        .filter((el) => el.parentElement === parent)
+        .sort((a, b) =>
+            a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+        );
+    if (ordered.length === 0) return { ok: false, reason: 'not-found' };
+
+    const el = doc.createElement(container.tagName || 'div');
+    for (const [k, v] of Object.entries(container.attributes ?? {})) {
+        if (ONLOOK_ATTR_RE.test(k)) continue; // never write Onlook editor attributes to source
+        if (k === CC_ID_ATTR) continue; // identity set below
+        el.setAttribute(k, v);
+    }
+    el.setAttribute(CC_ID_ATTR, container.oid); // identity = the action's oid (undo finds it here)
+
+    parent.insertBefore(el, ordered[0]);
+    for (const child of ordered) {
+        el.appendChild(child); // appendChild moves the node out of its old position
+    }
+    return writeDoc(loaded.path, doc);
+}
+
+/**
+ * Unwraps the container identified by `oid`: hoists every child node (elements AND text/whitespace)
+ * into the container's parent in place, then removes the now-empty container. Inverse of
+ * applyHtmlGroup.
+ */
+export async function applyHtmlUngroup(
+    oid: string | undefined,
+    pageFile: string,
+): Promise<HtmlWriteResult> {
+    const loaded = await loadDoc(pageFile);
+    if ('error' in loaded) return { ok: false, reason: loaded.error };
+    const { doc } = loaded;
+    const container = elementForOid(doc, oid);
+    if (!container) {
+        console.warn('[html-writeback] no source container to ungroup for oid', oid, 'in', pageFile);
+        return { ok: false, reason: 'not-found' };
+    }
+    const parent = container.parentElement;
+    if (!parent) return { ok: false, reason: 'not-found' };
+    ensureCcIds(doc); // give hoisted children durable ids so they stay addressable
+    while (container.firstChild) {
+        parent.insertBefore(container.firstChild, container);
+    }
+    parent.removeChild(container);
     return writeDoc(loaded.path, doc);
 }

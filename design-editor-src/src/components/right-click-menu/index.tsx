@@ -169,6 +169,24 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
                 icon: <Icons.ArrowDown className="mr-2 h-4 w-4" />,
             });
         }
+        // Group several same-parent siblings into a container, or ungroup a container (a div) back
+        // into its parent. Both persist to the HTML and undo atomically.
+        if (editorEngine.group.canGroupElements()) {
+            editing.push({
+                label: 'Agrupar',
+                action: () => void editorEngine.group.groupSelectedElements(),
+                icon: <Icons.Group className="mr-2 h-4 w-4" />,
+                hotkey: Hotkey.GROUP,
+            });
+        }
+        if (editorEngine.group.canUngroupElement() && tag === 'div') {
+            editing.push({
+                label: 'Desagrupar',
+                action: () => void editorEngine.group.ungroupSelectedElement(),
+                icon: <Icons.Group className="mr-2 h-4 w-4" />,
+                hotkey: Hotkey.UNGROUP,
+            });
+        }
         if (isText) {
             editing.push({
                 label: 'Editar texto',
