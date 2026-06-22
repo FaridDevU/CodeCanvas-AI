@@ -3,6 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from '../../../base/common/path.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
 import { DeferredPromise } from '../../../base/common/async.js';
 import { Emitter } from '../../../base/common/event.js';
@@ -52,6 +55,43 @@ export class ElectronAgentHostStarter extends Disposable implements IAgentHostSt
 		}));
 	}
 
+	/**
+	 * The Claude agent ships in the app's `node_modules` (`@anthropic-ai/claude-agent-sdk`).
+	 * Default the SDK path to it so the agent works out of the box, without the user having
+	 * to set `chat.agentHost.claudeAgent.path`. Empty string if not found.
+	 */
+	private _resolveBundledClaudeSdk(): string {
+		const candidate = join(this._environmentMainService.appRoot, 'node_modules', '@anthropic-ai', 'claude-agent-sdk');
+		return existsSync(candidate) ? candidate : '';
+	}
+
+	/**
+	 * Resolve a locally-installed `codex` binary from its known install locations, so the
+	 * Codex agent works without the user setting `chat.agentHost.codexAgent.path`. A GUI
+	 * launch doesn't inherit the shell PATH, so a bare `codex` would not be found.
+	 */
+	private _resolveCodexBinary(): string {
+		const home = homedir();
+		const candidates = process.platform === 'win32'
+			? [
+				join(home, 'AppData', 'Local', 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'),
+				join(home, 'AppData', 'Roaming', 'npm', 'codex.cmd'),
+				join(home, 'AppData', 'Roaming', 'npm', 'codex.exe'),
+			]
+			: [
+				join(home, '.codex', 'bin', 'codex'),
+				'/opt/homebrew/bin/codex',
+				'/usr/local/bin/codex',
+				join(home, '.npm-global', 'bin', 'codex'),
+			];
+		for (const candidate of candidates) {
+			if (existsSync(candidate)) {
+				return candidate;
+			}
+		}
+		return '';
+	}
+
 	async start(): Promise<IAgentHostConnection> {
 		this.utilityProcess = new UtilityProcess(this._logService, NullTelemetryService, this._lifecycleMainService);
 		this.utilityProcessStarted = new DeferredPromise<void>();
@@ -73,6 +113,7 @@ export class ElectronAgentHostStarter extends Disposable implements IAgentHostSt
 		// override). The SDK itself is intentionally not bundled with VS Code.
 		const claudeSdkPath = this._configurationService.getValue<string>(AgentHostClaudeAgentSdkPathSettingId)
 			|| process.env[AgentHostClaudeSdkPathEnvVar]
+			|| this._resolveBundledClaudeSdk()
 			|| '';
 
 		// Codex agent is opt-in: enabled when the user points the binary-path
@@ -80,6 +121,7 @@ export class ElectronAgentHostStarter extends Disposable implements IAgentHostSt
 		// already set on the parent process (developer override).
 		const codexBinaryPath = this._configurationService.getValue<string>(AgentHostCodexAgentBinaryPathSettingId)
 			|| process.env[AgentHostCodexAgentBinaryPathEnvVar]
+			|| this._resolveCodexBinary()
 			|| '';
 		const codexHome = this._configurationService.getValue<string>(AgentHostCodexAgentCodexHomeSettingId) || '';
 		const codexArgs = this._configurationService.getValue<readonly string[]>(AgentHostCodexAgentBinaryArgsSettingId);
