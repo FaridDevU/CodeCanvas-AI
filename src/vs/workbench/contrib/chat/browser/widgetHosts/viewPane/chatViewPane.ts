@@ -4,6 +4,17 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/chatViewPane.css';
+import { AgentSelectorControl } from './agentSelectorControl.js';
+
+/**
+ * Agent selector id → agent-host chat session type (`agent-host-<provider>`).
+ * Claude/Codex are NOT here: they run via our CLI language-model (`claude-cli`/`codex-cli`)
+ * in the local chat (the agent-host route depends on a GitHub Copilot login and hangs).
+ * Copilot keeps the agent-host route; kimi has no backend → local chat fallback.
+ */
+const AGENT_SESSION_TYPE: Record<string, string> = {
+	copilot: 'agent-host-copilotcli',
+};
 import { $, addDisposableListener, append, EventHelper, EventType, getWindow, setVisibility } from '../../../../../../base/browser/dom.js';
 import { StandardMouseEvent } from '../../../../../../base/browser/mouseEvent.js';
 import { Button } from '../../../../../../base/browser/ui/button/button.js';
@@ -67,6 +78,10 @@ import { IAgentSession } from '../../agentSessions/agentSessionsModel.js';
 import { ChatEntitlementContextKeys, IChatEntitlementService } from '../../../../../services/chat/common/chatEntitlementService.js';
 import { toErrorMessage } from '../../../../../../base/common/errorMessage.js';
 import { IHostService } from '../../../../../services/host/browser/host.js';
+import { IPathService } from '../../../../../services/path/common/pathService.js';
+import { ITerminalService } from '../../../../terminal/browser/terminal.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { getAccountStatus, AGENT_LOGIN_COMMAND, AGENT_LOGOUT_COMMAND } from './ccAccountStatus.js';
 
 interface IChatViewPaneState extends Partial<IChatModelInputState> {
 	/**
@@ -89,6 +104,11 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	private readonly viewState: IChatViewPaneState;
 
 	private viewPaneContainer: HTMLElement | undefined;
+	private agentSelector: AgentSelectorControl | undefined;
+	/** Re-reads the active agent's account status and pushes it to the selector. */
+	private refreshAccountStatus: () => void = () => { };
+	/** Whether the user opened the history (sessions) view via the "Historial" button. */
+	private historialOpen = false;
 	private readonly chatViewLocationContext: IContextKey<ViewContainerLocation>;
 
 	private lastDimensions: { height: number; width: number } | undefined;
@@ -128,6 +148,9 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		@ICommandService private readonly commandService: ICommandService,
 		@IActivityService private readonly activityService: IActivityService,
 		@IHostService private readonly hostService: IHostService,
+		@IFileService private readonly fileService: IFileService,
+		@IPathService private readonly pathService: IPathService,
+		@ITerminalService private readonly terminalService: ITerminalService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -310,6 +333,62 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		this.viewPaneContainer.classList.add('chat-viewpane');
 		this.updateViewPaneClasses(false);
 
+		// Agent selector (Claude/Kimi/Codex/Copilot) — themes the panel by agent color.
+		const agentSelector = this.agentSelector = this._register(new AgentSelectorControl(parent, this.viewPaneContainer));
+		// Picking/changing an agent loads it into this panel. Copilot uses its agent-host session;
+		// Claude/Codex/Kimi run as a local chat so our CLI language-model handles the turn (a bare
+		// new-chat command keeps the previous agent-host target, which ignores the model picker).
+		const openAgentSession = (agentId: string) => {
+			const sessionType = AGENT_SESSION_TYPE[agentId];
+			if (sessionType) {
+				// Agent-host session types only register the in-place action (the sidebar/editor
+				// variants are extension-point only). 'sidebar' loads it into this panel.
+				this.commandService.executeCommand(`workbench.action.chat.openNewChatSessionInPlace.${sessionType}`, 'sidebar');
+			} else {
+				// Load the Local session in-place — the exact command the session-target picker runs
+				// for "Local". This flips the panel's target off agent-host so our CLI language-model
+				// (scoped via the model picker to claude-cli/codex-cli) handles the turn.
+				this.commandService.executeCommand('workbench.action.chat.openNewChatSessionInPlace.local', 'sidebar');
+			}
+		};
+		this._register(agentSelector.onNewChat(() => openAgentSession(agentSelector.currentAgent.id)));
+		this._register(agentSelector.onDidChangeAgent(agent => { openAgentSession(agent.id); this.refreshAccountStatus(); }));
+
+		// Account status (linked/unlinked + email) for the active agent.
+		const refreshAccountStatus = this.refreshAccountStatus = async () => {
+			const home = this.pathService.userHome({ preferLocal: true });
+			const status = await getAccountStatus(agentSelector.currentAgent.id, this.fileService, home);
+			agentSelector.setAccountStatus(status);
+		};
+		refreshAccountStatus();
+		// Re-check when the window regains focus (e.g. after completing login in a terminal).
+		this._register(this.hostService.onDidChangeFocus(focused => { if (focused) { refreshAccountStatus(); } }));
+		// "Vincular ahora" → run the agent's login command in a fresh terminal, then re-check.
+		this._register(agentSelector.onLink(async () => {
+			const command = AGENT_LOGIN_COMMAND[agentSelector.currentAgent.id];
+			if (!command) {
+				return;
+			}
+			const terminal = await this.terminalService.createAndFocusTerminal({ config: { name: `Vincular ${agentSelector.currentAgent.label}` } });
+			terminal.sendText(command, true);
+		}));
+		// Sign out → run the agent's logout command in a fresh terminal, then re-check.
+		this._register(agentSelector.onLogout(async () => {
+			const command = AGENT_LOGOUT_COMMAND[agentSelector.currentAgent.id];
+			if (!command) {
+				return;
+			}
+			// allow-any-unicode-next-line
+			const terminal = await this.terminalService.createAndFocusTerminal({ config: { name: `Cerrar sesión ${agentSelector.currentAgent.label}` } });
+			terminal.sendText(command, true);
+		}));
+		this._register(agentSelector.onHistory(() => {
+			this.historialOpen = !this.historialOpen;
+			this.updateSessionsControlVisibility();
+			this.relayout();
+		}));
+		this._register(agentSelector.onUseOwnApi(() => this.commandService.executeCommand('workbench.action.openLanguageModelsJson')));
+
 		this.createControls(parent);
 
 		this.setupContextMenu(parent);
@@ -472,6 +551,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		let newSessionsContainerVisible: boolean;
 		if (!this.configurationService.getValue<boolean>(ChatConfiguration.ChatViewSessionsEnabled)) {
 			newSessionsContainerVisible = false; // disabled in settings
+		} else if (!this.historialOpen) {
+			newSessionsContainerVisible = false; // only shown via the "Historial" button
 		} else {
 
 			// Sessions control: stacked
@@ -942,6 +1023,11 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		// Title Control
 		const titleHeight = this.titleControl?.getHeight() ?? 0;
 		remainingHeight -= titleHeight;
+
+		// Agent selector header (full-width bar above the chat; reserved via padding-top)
+		const headerHeight = this.agentSelector?.height ?? 0;
+		this.viewPaneContainer?.style.setProperty('--cc-header-h', `${headerHeight}px`);
+		remainingHeight -= headerHeight;
 
 		// Sessions Control
 		const { heightReduction, widthReduction } = this.layoutSessionsControl(remainingHeight, remainingWidth);

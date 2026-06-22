@@ -1,5 +1,7 @@
 {
 	"colors": [
+		"--cc-agent-accent",
+		"--cc-item-accent",
 		"--vscode-actionBar-toggledBackground",
 		"--vscode-activityBar-activeBackground",
 		"--vscode-activityBar-activeBorder",
@@ -940,6 +942,8 @@
 		"--vscode-window-inactiveBorder"
 	],
 	"others": [
+		"--cc-angle",
+		"--cc-header-h",
 		"--activity-bar-action-height",
 		"--activity-bar-icon-size",
 		"--activity-bar-width",

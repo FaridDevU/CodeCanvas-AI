@@ -1,0 +1,358 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Animatable angle for the running border line. */
+@property --cc-angle {
+	syntax: '<angle>';
+	initial-value: 0deg;
+	inherits: false;
+}
+
+@keyframes cc-border-run {
+	to { --cc-angle: 360deg; }
+}
+
+/* Per-agent accent. Applied via `cc-agent-<id>` on the chat viewpane root. */
+.chat-viewpane.cc-agent-claude { --cc-agent-accent: #d97757; }
+.chat-viewpane.cc-agent-codex { --cc-agent-accent: #9aa0a6; }
+.chat-viewpane.cc-agent-copilot { --cc-agent-accent: #3794ff; }
+.chat-viewpane.cc-agent-kimi { --cc-agent-accent: #a855f7; }
+
+/* ---- Header action row: Nuevo chat / Historial ---- */
+.cc-agent-actions {
+	display: flex;
+	gap: 8px;
+	padding: 8px 10px 2px;
+}
+
+.cc-agent-action {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	flex: 1;
+	padding: 7px 10px;
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 8px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.cc-agent-action:hover {
+	border-color: var(--cc-agent-accent, var(--vscode-focusBorder));
+}
+
+.cc-agent-action .codicon {
+	font-size: 14px;
+}
+
+/* ---- Agent logos (official brand SVGs, full color) ---- */
+.cc-agent-logo {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 auto;
+	display: inline-block;
+	background-repeat: no-repeat;
+	background-position: center;
+	background-size: contain;
+}
+
+.cc-logo-claude { background-image: url('./agent-claude.svg'); }
+.cc-logo-kimi { background-image: url('./agent-kimi.svg'); }
+.cc-logo-codex { background-image: url('./agent-codex.svg'); }
+.cc-logo-copilot { background-image: url('./agent-copilot.svg'); }
+
+/* The viewpane is a row-reverse flex; take the header out of that flow as a full-width top bar and reserve its height with padding. */
+.chat-viewpane:has(> .cc-agent-header) {
+	position: relative;
+	padding-top: var(--cc-header-h, 0px);
+	box-sizing: border-box;
+}
+
+.chat-viewpane > .cc-agent-header {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: auto;
+	z-index: 30;
+	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+.cc-agent-selector {
+	position: relative;
+	padding: 6px 10px;
+}
+
+.cc-agent-trigger {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 8px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	text-align: left;
+	/* Faint constant accent ring so the box always reads in the agent color. */
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--cc-agent-accent, #d97757) 35%, transparent),
+		0 0 12px -2px color-mix(in srgb, var(--cc-agent-accent, #d97757) 30%, transparent);
+}
+
+/* Bright accent line running around the selector box in the active agent color. */
+.cc-agent-trigger::after {
+	content: '';
+	position: absolute;
+	inset: -1px;
+	border-radius: 9px;
+	padding: 1.5px;
+	background: conic-gradient(
+		from var(--cc-angle),
+		transparent 0deg,
+		transparent 310deg,
+		color-mix(in srgb, var(--cc-agent-accent, #d97757) 40%, transparent) 330deg,
+		var(--cc-agent-accent, #d97757) 350deg,
+		#fff 359deg,
+		transparent 360deg
+	);
+	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	mask-composite: exclude;
+	animation: cc-border-run 7s linear infinite;
+	pointer-events: none;
+	/* Bloom: the worm head emits light in the agent color. */
+	filter: drop-shadow(0 0 3px var(--cc-agent-accent, #d97757));
+}
+
+.cc-agent-trigger-label {
+	flex: 1;
+	font-weight: 600;
+}
+
+.cc-agent-caret {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+.cc-agent-menu {
+	display: none;
+	position: absolute;
+	z-index: 50;
+	left: 10px;
+	right: 10px;
+	margin-top: 4px;
+	padding: 6px;
+	border: 1px solid var(--vscode-menu-border, var(--vscode-input-border));
+	border-radius: 10px;
+	background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cc-agent-menu.open {
+	display: block;
+}
+
+.cc-agent-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 10px;
+	border-radius: 8px;
+	border: 1px solid transparent;
+	cursor: pointer;
+}
+
+.cc-agent-item:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+/* Selected card glows in its own agent color. */
+.cc-agent-item.selected {
+	border-color: var(--cc-item-accent);
+	background: color-mix(in srgb, var(--cc-item-accent) 12%, transparent);
+}
+
+/* Each item carries its own accent so colors show even before selection. */
+.cc-agent-item.cc-agent-claude { --cc-item-accent: #d97757; }
+.cc-agent-item.cc-agent-codex { --cc-item-accent: #9aa0a6; }
+.cc-agent-item.cc-agent-copilot { --cc-item-accent: #3794ff; }
+.cc-agent-item.cc-agent-kimi { --cc-item-accent: #a855f7; }
+
+.cc-agent-item-text {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+}
+
+.cc-agent-item-label {
+	font-weight: 600;
+}
+
+.cc-agent-item-desc {
+	font-size: 11px;
+	opacity: 0.7;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cc-agent-item-check {
+	color: var(--cc-item-accent);
+	visibility: hidden;
+}
+
+.cc-agent-item.selected .cc-agent-item-check {
+	visibility: visible;
+}
+
+/* Footer: separator + "Usar API propia" */
+.cc-agent-sep {
+	height: 1px;
+	margin: 6px 8px;
+	background: var(--vscode-menu-separatorBackground, rgba(255, 255, 255, 0.1));
+}
+
+.cc-agent-api-icon {
+	width: 18px;
+	font-size: 16px;
+	text-align: center;
+	color: var(--vscode-foreground);
+	opacity: 0.85;
+}
+
+/* ---- Input box (bottom) follows the active agent color ---- */
+.chat-viewpane[class*='cc-agent-'] .chat-input-container {
+	border-color: color-mix(in srgb, var(--cc-agent-accent) 45%, transparent) !important;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-viewpane[class*='cc-agent-'] .chat-input-container.focused {
+	border-color: var(--cc-agent-accent) !important;
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--cc-agent-accent) 50%, transparent),
+		0 0 14px -3px color-mix(in srgb, var(--cc-agent-accent) 55%, transparent) !important;
+}
+
+/* Send button filled in the agent color. */
+.chat-viewpane[class*='cc-agent-'] .codicon-send {
+	color: var(--cc-agent-accent) !important;
+}
+
+.chat-viewpane[class*='cc-agent-'] .monaco-action-bar .action-item.chat-send .action-label,
+.chat-viewpane[class*='cc-agent-'] .chat-execute-toolbar .action-item .action-label.codicon-send {
+	background: color-mix(in srgb, var(--cc-agent-accent) 18%, transparent);
+	border-radius: 6px;
+}
+
+/* ---- Account status (bottom-right footer, next to "Default Approvals") ---- */
+.chat-viewpane {
+	position: relative;
+}
+
+.cc-agent-status {
+	position: absolute;
+	bottom: 4px;
+	right: 10px;
+	z-index: 20;
+	height: 22px; /* match the .chat-secondary-toolbar footer row so text baselines align */
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	max-width: 65%;
+}
+
+.cc-agent-status-sep {
+	width: 1px;
+	height: 12px;
+	background: var(--vscode-foreground);
+	opacity: 0.22;
+	margin-right: 3px;
+}
+
+.cc-agent-status.unavailable {
+	display: none;
+}
+
+.cc-agent-status-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	flex: 0 0 auto;
+}
+
+.cc-agent-status.linked .cc-agent-status-dot {
+	background: #2ea043;
+	box-shadow: 0 0 6px -1px #2ea043;
+}
+
+.cc-agent-status.unlinked .cc-agent-status-dot {
+	background: #f85149;
+	box-shadow: 0 0 6px -1px #f85149;
+}
+
+.cc-agent-status-text {
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cc-agent-status-link {
+	margin-left: auto;
+	padding: 1px 8px;
+	font-size: 11px;
+	cursor: pointer;
+	color: var(--vscode-button-foreground, #fff);
+	background: var(--cc-agent-accent, var(--vscode-button-background));
+	border: none;
+	border-radius: 5px;
+}
+
+.cc-agent-status-link:hover {
+	filter: brightness(1.1);
+}
+
+/* Link button only shows when unlinked. */
+.cc-agent-status:not(.unlinked) .cc-agent-status-link {
+	display: none;
+}
+
+/* Logout button: subtle, only shown when linked. */
+.cc-agent-status-logout {
+	margin-left: auto;
+	padding: 1px 8px;
+	font-size: 11px;
+	cursor: pointer;
+	color: var(--vscode-descriptionForeground);
+	background: transparent;
+	border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+	border-radius: 5px;
+}
+
+.cc-agent-status-logout:hover {
+	color: var(--vscode-foreground);
+	border-color: var(--cc-agent-accent, var(--vscode-focusBorder));
+}
+
+.cc-agent-status:not(.linked) .cc-agent-status-logout {
+	display: none;
+}
+
+/* The top agent selector is the single source of truth; keep the footer target label visible (it mirrors the current agent) but non-interactive so the user can't switch agent from there. */
+.chat-viewpane .chat-session-target-picker-item {
+	pointer-events: none !important;
+}
+
+/* Drop its dropdown caret — it no longer opens anything. */
+.chat-viewpane .chat-session-target-picker-item .codicon-chevron-down {
+	display: none !important;
+}
