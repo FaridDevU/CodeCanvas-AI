@@ -89,6 +89,7 @@ import { IChatEditingSession, IModifiedFileEntry, ModifiedFileEntryState } from 
 import { ILanguageModelChatMetadata, ILanguageModelChatMetadataAndIdentifier, ILanguageModelsService } from '../../../common/languageModels.js';
 import { IChatModelInputState, IChatRequestModeInfo, IInputModel, logChangesToStateModel } from '../../../common/model/chatModel.js';
 import { filterModelsForSession, findDefaultModel, hasModelsTargetingSession, isModelValidForSession, mergeModelsWithCache, resolveModelFromSyncState, shouldResetModelToDefault, shouldResetOnModelListChange, shouldRestoreLateArrivingModel, shouldRestorePersistedModel } from './chatModelSelectionLogic.js';
+import { hasActiveAgentFilter, isModelVendorActive, onDidChangeActiveAgent } from '../../cliProviders/ccActiveAgent.js';
 import { getChatSessionType, LocalChatSessionUri } from '../../../common/model/chatUri.js';
 import { IChatResponseViewModel, isResponseVM } from '../../../common/model/chatViewModel.js';
 import { IChatAgentService } from '../../../common/participants/chatAgents.js';
@@ -747,6 +748,15 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		};
 		this._register(this.languageModelsService.onDidChangeLanguageModels(resetCurrentLanguageModelIfUnavailable));
 		this._register(this.languageModelsService.onDidChangeModelVisibility(resetCurrentLanguageModelIfUnavailable));
+
+		// When the active agent changes, reset to a model in the new agent's pool if the current
+		// one no longer belongs to it.
+		this._register(onDidChangeActiveAgent(() => {
+			const lm = this._currentLanguageModel.get();
+			if (lm && !isModelVendorActive(lm.metadata.vendor)) {
+				this.setCurrentLanguageModelToDefault();
+			}
+		}));
 
 		this._register(this.onDidChangeCurrentChatMode(() => {
 			this.accessibilityService.alert(this._currentModeObservable.get().label.get());
@@ -1432,7 +1442,17 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		models.sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
 
 		const sessionFiltered = filterModelsForSession(models, this.getCurrentSessionType(), this.currentModeKind, this.location);
-		return sessionFiltered.filter(m => !this.languageModelsService.isModelHidden(m.identifier));
+		const visible = sessionFiltered.filter(m => !this.languageModelsService.isModelHidden(m.identifier));
+
+		// Scope to the active agent (set by the agent selector). If the filter leaves nothing,
+		// fall back to all so the picker is never empty.
+		if (hasActiveAgentFilter()) {
+			const scoped = visible.filter(m => isModelVendorActive(m.metadata.vendor));
+			if (scoped.length) {
+				return scoped;
+			}
+		}
+		return visible;
 	}
 
 	/**
