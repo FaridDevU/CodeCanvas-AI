@@ -44,6 +44,11 @@ export function setActiveAgent(agentId: string): void {
 	_onDidChange.fire();
 }
 
+/** The currently selected agent id (claude/codex/copilot/...), or undefined before first pick. */
+export function getActiveAgentId(): string | undefined {
+	return _activeAgentId;
+}
+
 /** Whether the picker should show a model with this vendor for the active agent. */
 export function isModelVendorActive(vendor: string): boolean {
 	return _filter ? _filter(vendor) : true;

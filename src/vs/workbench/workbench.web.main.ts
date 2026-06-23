@@ -98,6 +98,7 @@ import { IDiagnosticsService, NullDiagnosticsService } from '../platform/diagnos
 import { ILanguagePackService } from '../platform/languagePacks/common/languagePacks.js';
 import { WebLanguagePacksService } from '../platform/languagePacks/browser/languagePacks.js';
 import { IWebContentExtractorService, NullWebContentExtractorService, ISharedWebContentExtractorService, NullSharedWebContentExtractorService } from '../platform/webContentExtractor/common/webContentExtractor.js';
+import { ICliAgentService, NullCliAgentService } from '../platform/cliAgent/common/cliAgent.js';
 import { IMcpGalleryManifestService } from '../platform/mcp/common/mcpGalleryManifest.js';
 import { WorkbenchMcpGalleryManifestService } from './services/mcp/browser/mcpGalleryManifestService.js';
 import { UserDataSyncResourceProviderService } from '../platform/userDataSync/common/userDataSyncResourceProvider.js';
@@ -124,6 +125,7 @@ registerSingleton(IDiagnosticsService, NullDiagnosticsService, InstantiationType
 registerSingleton(ILanguagePackService, WebLanguagePacksService, InstantiationType.Delayed);
 registerSingleton(IWebContentExtractorService, NullWebContentExtractorService, InstantiationType.Delayed);
 registerSingleton(ISharedWebContentExtractorService, NullSharedWebContentExtractorService, InstantiationType.Delayed);
+registerSingleton(ICliAgentService, NullCliAgentService, InstantiationType.Delayed);
 registerSingleton(IMcpGalleryManifestService, WorkbenchMcpGalleryManifestService, InstantiationType.Delayed);
 registerSingleton(IAgentHostService, EditorRemoteAgentHostServiceClient, InstantiationType.Delayed);
 registerSingleton(IRemoteAgentHostService, NullRemoteAgentHostService, InstantiationType.Delayed);

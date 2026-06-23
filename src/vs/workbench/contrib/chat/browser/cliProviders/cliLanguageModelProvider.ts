@@ -6,16 +6,13 @@
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { AsyncIterableSource } from '../../../../../base/common/async.js';
 import { Emitter } from '../../../../../base/common/event.js';
-import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
-import { removeAnsiEscapeCodes } from '../../../../../base/common/strings.js';
-import { generateUuid } from '../../../../../base/common/uuid.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
-import { ILogService } from '../../../../../platform/log/common/log.js';
-import { IShellLaunchConfig, ITerminalProcessOptions } from '../../../../../platform/terminal/common/terminal.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { nullExtensionDescription } from '../../../../services/extensions/common/extensions.js';
-import { ITerminalInstanceService } from '../../../terminal/browser/terminal.js';
+import { CliFormat, ICliAgentService } from '../../../../../platform/cliAgent/common/cliAgent.js';
+import { runCli } from './cliProcess.js';
 import {
 	ChatMessageRole,
 	IChatMessage,
@@ -34,21 +31,6 @@ import {
 /** Setting that controls the CLI permission level (how freely the agent may act). */
 export const PERMISSION_MODE_SETTING = 'codecanvas.design.permissionMode';
 
-/** A content block from Claude Code's stream-json (`assistant` message content). */
-interface IClaudeContentBlock {
-	readonly type?: string;
-	readonly text?: string;
-	readonly name?: string;
-	readonly input?: {
-		readonly file_path?: string;
-		readonly path?: string;
-		readonly command?: string;
-		readonly pattern?: string;
-		readonly url?: string;
-		readonly query?: string;
-	};
-}
-
 /** One selectable model within a vendor — e.g. Claude Opus/Sonnet/Haiku, all run by `claude`. */
 export interface ICliSubModel {
 	/** Model id within the vendor; identifier is `<vendor>:<id>`. */
@@ -62,6 +44,8 @@ export interface ICliSubModel {
 export interface ICliModelDescriptor {
 	/** Stable vendor id, e.g. `claude-cli`. Drives per-provider theming (CSS class). */
 	readonly vendor: string;
+	/** Agent-selector id (claude/codex) that gates the chat agent via the `ccActiveAgent` key. */
+	readonly agentId: string;
 	/** Provider/group name shown in the picker, e.g. `Claude`. */
 	readonly displayName: string;
 	/** Executable to spawn, e.g. `claude`. */
@@ -69,17 +53,22 @@ export interface ICliModelDescriptor {
 	/** Selectable models shown in the picker for this vendor. */
 	readonly models: readonly ICliSubModel[];
 	/**
-	 * Builds the argv for a one-shot, non-interactive run that prints to stdout and exits.
-	 * `modelArg` selects the model; `permissionMode` is the CLI permission level (so the agent
-	 * may edit files / run commands without an interactive prompt). Both optional = CLI defaults.
+	 * How the prompt reaches the CLI. `stdin` (claude) dodges the Windows command-line length
+	 * limit and gives the process EOF; `argv` (codex) appends the prompt as the last argument.
 	 */
-	readonly buildArgs: (prompt: string, opts: { modelArg?: string; permissionMode?: string }) => string[];
+	readonly promptVia: 'stdin' | 'argv';
+	/**
+	 * Builds the flag argv for a one-shot, non-interactive run (NOT the prompt — see `promptVia`).
+	 * `modelArg` selects the model; `permissionMode` is the CLI permission level (so the agent may
+	 * edit files / run commands without an interactive prompt). Both optional = CLI defaults.
+	 */
+	readonly buildArgs: (opts: { modelArg?: string; permissionMode?: string }) => string[];
 	/**
 	 * Output shape. `text` streams stdout verbatim. `claude-stream-json` parses Claude Code's
 	 * NDJSON (`--output-format stream-json`): emits the text blocks, ignores system/result noise.
 	 * Tool events (tool_use/tool_result) are ignored for now — rendered in a later step.
 	 */
-	readonly format?: 'text' | 'claude-stream-json';
+	readonly format?: CliFormat;
 }
 
 /**
@@ -93,10 +82,9 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 
 	constructor(
 		private readonly _descriptor: ICliModelDescriptor,
-		@ITerminalInstanceService private readonly _terminalInstanceService: ITerminalInstanceService,
 		@IWorkspaceContextService private readonly _workspaceContextService: IWorkspaceContextService,
-		@ILogService private readonly _logService: ILogService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
+		@ICliAgentService private readonly _cliAgentService: ICliAgentService,
 	) {
 		super();
 	}
@@ -137,75 +125,21 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 		const permissionMode = this._configurationService.getValue<string>(PERMISSION_MODE_SETTING);
 		const prompt = this._buildPrompt(messages);
 		const source = new AsyncIterableSource<IChatResponsePart>();
-		const store = new DisposableStore();
+		const cwd = this._workspaceContextService.getWorkspace().folders[0]?.uri.fsPath ?? '';
+		const flags = this._descriptor.buildArgs({ modelArg: subModel.modelArg, permissionMode });
+		const promptViaStdin = this._descriptor.promptVia === 'stdin';
 
-		const result = (async () => {
-			const backend = await this._terminalInstanceService.getBackend();
-			if (!backend) {
-				throw new Error('No terminal backend available to run the CLI model');
-			}
+		const result = runCli({
+			executable: this._descriptor.executable,
+			args: promptViaStdin ? flags : [...flags, prompt],
+			cwd,
+			format: this._descriptor.format,
+			stdin: promptViaStdin ? prompt : undefined,
+			onText: text => source.emitOne({ type: 'text', value: text }),
+			token,
+		}, this._cliAgentService);
 
-			const cwd = this._workspaceContextService.getWorkspace().folders[0]?.uri.fsPath ?? '';
-			const env = await backend.getEnvironment();
-
-			const shellLaunchConfig: IShellLaunchConfig = {
-				executable: this._descriptor.executable,
-				args: this._descriptor.buildArgs(prompt, { modelArg: subModel.modelArg, permissionMode }),
-				name: `CodeCanvas ${subModel.name}`,
-				// ponytail: hidden/transient so it never shows in the terminal panel.
-				isTransient: true,
-				hideFromUser: true,
-			};
-
-			const options: ITerminalProcessOptions = {
-				shellIntegration: { enabled: false, suggestEnabled: false, nonce: generateUuid() },
-				windowsUseConptyDll: false,
-				environmentVariableCollections: undefined,
-				workspaceFolder: undefined,
-				isScreenReaderOptimized: false,
-			};
-
-			// ponytail: huge cols so the PTY never reflows long stream-json lines into broken
-			// JSON. A real pipe would be cleaner, but the terminal backend only offers PTYs.
-			const proc = await backend.createProcess(shellLaunchConfig, cwd, 100000, 30, '11', env, options, /* shouldPersist */ false);
-			store.add(proc);
-
-			const onData = this._descriptor.format === 'claude-stream-json'
-				? this._makeStreamJsonHandler(source)
-				: (raw: string) => { const text = removeAnsiEscapeCodes(raw); if (text) { source.emitOne({ type: 'text', value: text }); } };
-			store.add(proc.onProcessData(e => onData(typeof e === 'string' ? e : e.data)));
-
-			store.add(token.onCancellationRequested(() => proc.shutdown(true)));
-
-			let startError: string | undefined;
-			const exitCode = await new Promise<number | undefined>(resolve => {
-				store.add(proc.onProcessExit(code => resolve(code)));
-				proc.start().then(err => {
-					if (err) {
-						this._logService.error(`[cli-model] failed to start ${this._descriptor.executable}`, err);
-						startError = err.message;
-						resolve(typeof (err as { code?: number }).code === 'number' ? (err as { code?: number }).code : 1);
-					}
-				}, e => {
-					this._logService.error(`[cli-model] start threw for ${this._descriptor.executable}`, e);
-					startError = e instanceof Error ? e.message : String(e);
-					resolve(1);
-				});
-			});
-
-			if (startError) {
-				// Almost always the binary isn't on the app's PATH (a GUI launch doesn't inherit
-				// the shell PATH). Make that actionable instead of a bare exit code.
-				throw new Error(`Could not run "${this._descriptor.executable}". Is it installed and on PATH? (${startError})`);
-			}
-			if (exitCode && exitCode !== 0) {
-				throw new Error(`${subModel.name} exited with code ${exitCode}`);
-			}
-		})();
-
-		// Resolve/reject the stream when the process is done.
-		result.then(() => source.resolve(), err => source.reject(err instanceof Error ? err : new Error(String(err))))
-			.finally(() => store.dispose());
+		result.then(() => source.resolve(), err => source.reject(err instanceof Error ? err : new Error(String(err))));
 
 		return { stream: source.asyncIterable, result };
 	}
@@ -214,52 +148,6 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 		// ponytail: rough char/4 estimate; swap for a real tokenizer if budgeting matters.
 		const text = typeof message === 'string' ? message : this._messageText(message);
 		return Math.ceil(text.length / 4);
-	}
-
-	/**
-	 * Returns a stdout handler that parses Claude Code's NDJSON stream. Buffers across chunks,
-	 * splits on newlines, and emits each `assistant` event's content: text blocks verbatim, and
-	 * `tool_use` blocks as a compact markdown line (e.g. **Edit** `src/foo.ts`) so the user sees
-	 * the agent working. The tools already ran inside the CLI, so we render them as plain text —
-	 * never as a chat tool-use part (that would make the chat try to execute them again).
-	 */
-	private _makeStreamJsonHandler(source: AsyncIterableSource<IChatResponsePart>): (raw: string) => void {
-		let buffer = '';
-		return (raw: string) => {
-			buffer += raw;
-			let nl: number;
-			while ((nl = buffer.indexOf('\n')) >= 0) {
-				const line = removeAnsiEscapeCodes(buffer.slice(0, nl)).trim();
-				buffer = buffer.slice(nl + 1);
-				if (!line) {
-					continue;
-				}
-				let event: { type?: string; message?: { content?: IClaudeContentBlock[] } };
-				try {
-					event = JSON.parse(line);
-				} catch {
-					continue; // partial/garbled line (PTY noise) — skip
-				}
-				if (event?.type === 'assistant' && Array.isArray(event.message?.content)) {
-					for (const block of event.message.content) {
-						if (block?.type === 'text' && block.text) {
-							source.emitOne({ type: 'text', value: block.text });
-						} else if (block?.type === 'tool_use' && block.name) {
-							source.emitOne({ type: 'text', value: this._formatToolUse(block) });
-						}
-					}
-				}
-			}
-		};
-	}
-
-	/** Compact, non-executable markdown line describing a tool the CLI ran. */
-	private _formatToolUse(block: IClaudeContentBlock): string {
-		const i = block.input ?? {};
-		// Pick the most telling argument; fall back to nothing rather than dumping raw JSON.
-		const arg = i.file_path ?? i.path ?? i.command ?? i.pattern ?? i.url ?? i.query ?? '';
-		const argText = typeof arg === 'string' && arg ? ` \`${arg.length > 120 ? arg.slice(0, 117) + '...' : arg}\`` : '';
-		return `\n\n**${block.name}**${argText}\n`;
 	}
 
 	private _buildPrompt(messages: IChatMessage[]): string {
