@@ -51,6 +51,8 @@ interface OpenChatPayload {
 		readonly oid?: string;
 		readonly text?: string;
 		readonly styles?: Record<string, string>;
+		/** True when the element is locked in the canvas — the agent must not modify it. */
+		readonly locked?: boolean;
 	};
 	readonly source?: {
 		readonly fileName?: string;
@@ -542,33 +544,42 @@ export class DesignEditorBridge extends Disposable {
 		return { ok: true };
 	}
 
+	/**
+	 * Builds the chat prompt from the Design selection. Reads as instructions to an agent that
+	 * can edit the source file (not a cryptic tag dump): which element, where it lives, and the
+	 * lock invariant. The user's own prompt goes last.
+	 */
 	private buildChatQuery(payload: OpenChatPayload): string {
-		const parts: string[] = [];
+		const context: string[] = [];
+		const el = payload.selectedElement;
 
-		if (payload.app) {
-			parts.push(`[App: ${payload.app.framework} @ ${payload.app.rootPath}${payload.app.url ? ` | ${payload.app.url}` : ''}]`);
-		}
-
-		if (payload.selectedElement) {
-			const el = payload.selectedElement;
-			const elParts: string[] = [];
-			if (el.tagName) { elParts.push(`tag=${el.tagName}`); }
-			if (el.domId) { elParts.push(`id=${el.domId}`); }
-			if (el.oid) { elParts.push(`oid=${el.oid}`); }
-			if (el.text) { elParts.push(`text="${el.text}"`); }
+		if (el) {
+			const desc: string[] = [];
+			desc.push(el.tagName ? `<${el.tagName}>` : 'an element');
+			if (el.domId) { desc.push(`#${el.domId}`); }
+			if (el.text) { desc.push(`"${el.text.length > 80 ? el.text.slice(0, 77) + '...' : el.text}"`); }
+			context.push(`Selected element: ${desc.join(' ')}`);
 			if (el.styles && Object.keys(el.styles).length > 0) {
-				elParts.push(`styles={${Object.entries(el.styles).map(([k, v]) => `${k}:${v}`).join(', ')}}`);
+				context.push(`Its inline styles: ${Object.entries(el.styles).map(([k, v]) => `${k}: ${v}`).join('; ')}`);
 			}
-			if (elParts.length > 0) {
-				parts.push(`[Element: ${elParts.join(' ')}]`);
+			if (el.locked) {
+				context.push('This element is LOCKED — do not modify it; explain instead of editing.');
 			}
 		}
 
 		if (payload.source?.fileName) {
 			const src = payload.source;
-			parts.push(`[Source: ${src.fileName}${src.lineNumber ? `:${src.lineNumber}` : ''}${src.columnNumber ? `:${src.columnNumber}` : ''}]`);
+			context.push(`Source: ${src.fileName}${src.lineNumber ? `:${src.lineNumber}` : ''}${src.columnNumber ? `:${src.columnNumber}` : ''}`);
 		}
 
+		if (payload.app) {
+			context.push(`Project: ${payload.app.framework} at ${payload.app.rootPath}${payload.app.url ? ` (${payload.app.url})` : ''}`);
+		}
+
+		const parts: string[] = [];
+		if (context.length > 0) {
+			parts.push(`[Design context]\n${context.map(c => `- ${c}`).join('\n')}`);
+		}
 		if (payload.prompt) {
 			if (parts.length > 0) {
 				parts.push('');
