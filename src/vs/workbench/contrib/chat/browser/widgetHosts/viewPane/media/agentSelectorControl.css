@@ -214,6 +214,26 @@
 	visibility: visible;
 }
 
+/* Coming-soon agents: dimmed, non-interactive, with a small badge. */
+.cc-agent-item.coming-soon {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.cc-agent-item.coming-soon:hover {
+	background: transparent;
+}
+
+.cc-agent-item-soon {
+	margin-left: auto;
+	padding: 1px 6px;
+	font-size: 10px;
+	border-radius: 4px;
+	color: var(--vscode-descriptionForeground);
+	border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+	white-space: nowrap;
+}
+
 /* Footer: separator + "Usar API propia" */
 .cc-agent-sep {
 	height: 1px;

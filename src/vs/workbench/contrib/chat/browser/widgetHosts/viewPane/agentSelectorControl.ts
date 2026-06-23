@@ -16,6 +16,8 @@ export interface IAgentDescriptor {
 	readonly id: string;
 	readonly label: string;
 	readonly description: string;
+	/** Shown but not selectable, with a "coming soon" badge (not wired up yet). */
+	readonly comingSoon?: boolean;
 }
 
 /** The agents shown in the selector. Color + logo per agent live in agentSelectorControl.css. */
@@ -23,9 +25,9 @@ export const CC_AGENTS: readonly IAgentDescriptor[] = [
 	// allow-any-unicode-next-line
 	{ id: 'claude', label: 'Claude', description: 'Análisis profundo y razonamiento avanzado' },
 	// allow-any-unicode-next-line
-	{ id: 'kimi', label: 'Kimi', description: 'Respuestas rápidas y concisas' },
+	{ id: 'kimi', label: 'Kimi', description: 'Respuestas rápidas y concisas', comingSoon: true },
 	// allow-any-unicode-next-line
-	{ id: 'codex', label: 'Codex', description: 'Experto en código y herramientas' },
+	{ id: 'codex', label: 'Codex', description: 'Experto en código y herramientas', comingSoon: true },
 	{ id: 'copilot', label: 'Copilot', description: 'Asistencia en tiempo real' },
 ];
 
@@ -109,7 +111,13 @@ export class AgentSelectorControl extends Disposable {
 			append(item, $(`span.cc-agent-logo.cc-logo-${agent.id}`));
 			const text = append(item, $('.cc-agent-item-text'));
 			append(text, $('span.cc-agent-item-label')).textContent = agent.label;
-			append(item, $('span.cc-agent-item-check.codicon.codicon-check'));
+			if (agent.comingSoon) {
+				item.classList.add('coming-soon');
+				// allow-any-unicode-next-line
+				append(item, $('span.cc-agent-item-soon')).textContent = localize('cc.comingSoon', "Próximamente");
+			} else {
+				append(item, $('span.cc-agent-item-check.codicon.codicon-check'));
+			}
 			this._register(addDisposableListener(item, EventType.CLICK, e => { e.stopPropagation(); this.select(agent.id); this._toggle(false); }));
 		}
 
@@ -163,8 +171,8 @@ export class AgentSelectorControl extends Disposable {
 
 	select(id: string): void {
 		const agent = CC_AGENTS.find(a => a.id === id);
-		if (!agent || agent.id === this._current.id) {
-			return;
+		if (!agent || agent.comingSoon || agent.id === this._current.id) {
+			return; // coming-soon agents are shown but not selectable
 		}
 		this._current = agent;
 		this._apply();
