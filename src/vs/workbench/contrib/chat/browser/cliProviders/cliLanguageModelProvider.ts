@@ -9,6 +9,7 @@ import { Emitter } from '../../../../../base/common/event.js';
 import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { removeAnsiEscapeCodes } from '../../../../../base/common/strings.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
 import { IShellLaunchConfig, ITerminalProcessOptions } from '../../../../../platform/terminal/common/terminal.js';
@@ -30,6 +31,24 @@ import {
  * hidden, isolated terminal process (PTY headless) — never attached to a visible
  * terminal instance — and its stdout is streamed back as chat text.
  */
+/** Setting that controls the CLI permission level (how freely the agent may act). */
+export const PERMISSION_MODE_SETTING = 'codecanvas.design.permissionMode';
+
+/** A content block from Claude Code's stream-json (`assistant` message content). */
+interface IClaudeContentBlock {
+	readonly type?: string;
+	readonly text?: string;
+	readonly name?: string;
+	readonly input?: {
+		readonly file_path?: string;
+		readonly path?: string;
+		readonly command?: string;
+		readonly pattern?: string;
+		readonly url?: string;
+		readonly query?: string;
+	};
+}
+
 /** One selectable model within a vendor — e.g. Claude Opus/Sonnet/Haiku, all run by `claude`. */
 export interface ICliSubModel {
 	/** Model id within the vendor; identifier is `<vendor>:<id>`. */
@@ -51,9 +70,10 @@ export interface ICliModelDescriptor {
 	readonly models: readonly ICliSubModel[];
 	/**
 	 * Builds the argv for a one-shot, non-interactive run that prints to stdout and exits.
-	 * `modelArg` (from the chosen sub-model) selects the model; undefined = CLI default.
+	 * `modelArg` selects the model; `permissionMode` is the CLI permission level (so the agent
+	 * may edit files / run commands without an interactive prompt). Both optional = CLI defaults.
 	 */
-	readonly buildArgs: (prompt: string, modelArg?: string) => string[];
+	readonly buildArgs: (prompt: string, opts: { modelArg?: string; permissionMode?: string }) => string[];
 	/**
 	 * Output shape. `text` streams stdout verbatim. `claude-stream-json` parses Claude Code's
 	 * NDJSON (`--output-format stream-json`): emits the text blocks, ignores system/result noise.
@@ -76,6 +96,7 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 		@ITerminalInstanceService private readonly _terminalInstanceService: ITerminalInstanceService,
 		@IWorkspaceContextService private readonly _workspaceContextService: IWorkspaceContextService,
 		@ILogService private readonly _logService: ILogService,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		super();
 	}
@@ -113,6 +134,7 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 
 	async sendChatRequest(modelId: string, messages: IChatMessage[], _from: ExtensionIdentifier | undefined, _options: ILanguageModelChatRequestOptions, token: CancellationToken): Promise<ILanguageModelChatResponse> {
 		const subModel = this._descriptor.models.find(m => m.id === modelId) ?? this._descriptor.models[0];
+		const permissionMode = this._configurationService.getValue<string>(PERMISSION_MODE_SETTING);
 		const prompt = this._buildPrompt(messages);
 		const source = new AsyncIterableSource<IChatResponsePart>();
 		const store = new DisposableStore();
@@ -128,7 +150,7 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 
 			const shellLaunchConfig: IShellLaunchConfig = {
 				executable: this._descriptor.executable,
-				args: this._descriptor.buildArgs(prompt, subModel.modelArg),
+				args: this._descriptor.buildArgs(prompt, { modelArg: subModel.modelArg, permissionMode }),
 				name: `CodeCanvas ${subModel.name}`,
 				// ponytail: hidden/transient so it never shows in the terminal panel.
 				isTransient: true,
@@ -196,8 +218,10 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 
 	/**
 	 * Returns a stdout handler that parses Claude Code's NDJSON stream. Buffers across chunks,
-	 * splits on newlines, and emits the text from each `assistant` event. Non-JSON / other event
-	 * types are skipped. Tool events are intentionally ignored here (rendered in a later step).
+	 * splits on newlines, and emits each `assistant` event's content: text blocks verbatim, and
+	 * `tool_use` blocks as a compact markdown line (e.g. **Edit** `src/foo.ts`) so the user sees
+	 * the agent working. The tools already ran inside the CLI, so we render them as plain text —
+	 * never as a chat tool-use part (that would make the chat try to execute them again).
 	 */
 	private _makeStreamJsonHandler(source: AsyncIterableSource<IChatResponsePart>): (raw: string) => void {
 		let buffer = '';
@@ -210,7 +234,7 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 				if (!line) {
 					continue;
 				}
-				let event: { type?: string; message?: { content?: { type?: string; text?: string }[] } };
+				let event: { type?: string; message?: { content?: IClaudeContentBlock[] } };
 				try {
 					event = JSON.parse(line);
 				} catch {
@@ -220,11 +244,22 @@ export class CliLanguageModelProvider extends Disposable implements ILanguageMod
 					for (const block of event.message.content) {
 						if (block?.type === 'text' && block.text) {
 							source.emitOne({ type: 'text', value: block.text });
+						} else if (block?.type === 'tool_use' && block.name) {
+							source.emitOne({ type: 'text', value: this._formatToolUse(block) });
 						}
 					}
 				}
 			}
 		};
+	}
+
+	/** Compact, non-executable markdown line describing a tool the CLI ran. */
+	private _formatToolUse(block: IClaudeContentBlock): string {
+		const i = block.input ?? {};
+		// Pick the most telling argument; fall back to nothing rather than dumping raw JSON.
+		const arg = i.file_path ?? i.path ?? i.command ?? i.pattern ?? i.url ?? i.query ?? '';
+		const argText = typeof arg === 'string' && arg ? ` \`${arg.length > 120 ? arg.slice(0, 117) + '...' : arg}\`` : '';
+		return `\n\n**${block.name}**${argText}\n`;
 	}
 
 	private _buildPrompt(messages: IChatMessage[]): string {

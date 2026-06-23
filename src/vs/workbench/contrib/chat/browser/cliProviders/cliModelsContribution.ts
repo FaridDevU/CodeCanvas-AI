@@ -6,9 +6,32 @@
 import { isWindows } from '../../../../../base/common/platform.js';
 import { Disposable, toDisposable } from '../../../../../base/common/lifecycle.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+import { Registry } from '../../../../../platform/registry/common/platform.js';
+import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../../platform/configuration/common/configurationRegistry.js';
+import { localize } from '../../../../../nls.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { ILanguageModelsService } from '../../common/languageModels.js';
-import { CliLanguageModelProvider, ICliModelDescriptor } from './cliLanguageModelProvider.js';
+import { CliLanguageModelProvider, ICliModelDescriptor, PERMISSION_MODE_SETTING } from './cliLanguageModelProvider.js';
+
+Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
+	id: 'codecanvas',
+	title: localize('codecanvas.title', "CodeCanvas"),
+	type: 'object',
+	properties: {
+		[PERMISSION_MODE_SETTING]: {
+			type: 'string',
+			enum: ['default', 'acceptEdits', 'plan', 'bypassPermissions'],
+			enumDescriptions: [
+				localize('cc.perm.default', "Ask before each action (write actions are skipped in the headless agent)."),
+				localize('cc.perm.acceptEdits', "Auto-apply file edits; other actions still require permission."),
+				localize('cc.perm.plan', "Only plan the changes; do not apply anything."),
+				localize('cc.perm.bypass', "Run every action without asking. Use with care."),
+			],
+			default: 'acceptEdits',
+			description: localize('cc.perm.desc', "How freely the AI agent (Claude CLI) may act on your project."),
+		},
+	},
+});
 
 /**
  * CLI-backed chat models that appear in the model picker alongside Copilot.
@@ -26,9 +49,15 @@ const CLI_MODELS: readonly ICliModelDescriptor[] = [
 			{ id: 'sonnet', name: 'Claude Sonnet', modelArg: 'sonnet' },
 			{ id: 'haiku', name: 'Claude Haiku', modelArg: 'haiku' },
 		],
-		// Agent mode: `-p` one-shot + stream-json so we get text + (later) tool events.
-		// `--verbose` is required by claude to stream the full NDJSON under `-p`.
-		buildArgs: (prompt, modelArg) => ['-p', '--output-format', 'stream-json', '--verbose', ...(modelArg ? ['--model', modelArg] : []), prompt],
+		// Agent mode: `-p` one-shot + stream-json so we get text + tool events. `--verbose` is
+		// required by claude to stream the full NDJSON under `-p`. `--permission-mode` lets the
+		// agent act (edit files / run commands) without an interactive prompt.
+		buildArgs: (prompt, { modelArg, permissionMode }) => [
+			'-p', '--output-format', 'stream-json', '--verbose',
+			...(permissionMode ? ['--permission-mode', permissionMode] : []),
+			...(modelArg ? ['--model', modelArg] : []),
+			prompt,
+		],
 		format: 'claude-stream-json',
 	},
 	{
@@ -42,7 +71,7 @@ const CLI_MODELS: readonly ICliModelDescriptor[] = [
 			{ id: 'gpt-5-codex', name: 'Codex GPT-5', modelArg: 'gpt-5-codex' },
 		],
 		// ponytail: `codex exec <prompt>` is codex's non-interactive run; `-m` picks the model.
-		buildArgs: (prompt, modelArg) => ['exec', ...(modelArg ? ['-m', modelArg] : []), prompt],
+		buildArgs: (prompt, { modelArg }) => ['exec', ...(modelArg ? ['-m', modelArg] : []), prompt],
 	},
 ];
 
