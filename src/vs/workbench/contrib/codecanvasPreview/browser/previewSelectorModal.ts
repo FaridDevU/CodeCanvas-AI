@@ -210,7 +210,7 @@ export class PreviewSelectorModal extends Disposable {
 		// Toolbar: tabs + count badge.
 		const toolbar = append(modal, $('.cc-ps-toolbar'));
 		const tab = append(toolbar, $('.cc-ps-tab.cc-ps-tab-active'));
-		append(tab, $('span')).textContent = localize('cc.ps.tabFiles', "Archivos de entrada");
+		append(tab, $('span')).textContent = localize('cc.ps.tabFiles', "Entry files");
 		append(tab, $('span.cc-ps-badge')).textContent = String(this.pages.length);
 
 		// Body: grid (left) + context panel (right).
@@ -255,7 +255,7 @@ export class PreviewSelectorModal extends Disposable {
 
 	private updateTitle(): void {
 		this.titleEl.textContent = localize(
-			'cc.ps.title', "Se detectaron {0} archivos de entrada en tu proyecto", this.pages.length);
+			'cc.ps.title', "Found {0} entry files in your project", this.pages.length);
 	}
 
 	private renderCards(): void {
@@ -580,7 +580,7 @@ export class PreviewSelectorModal extends Disposable {
 		const empty = append(this.contextEl, $('.cc-ps-context-empty'));
 		append(empty, $(ThemeIcon.asCSSSelector(Codicon.listSelection) + '.cc-ps-context-empty-icon'));
 		append(empty, $('p')).textContent =
-			localize('cc.ps.pickFile', "Selecciona un archivo para ver sus secciones.");
+			localize('cc.ps.pickFile', "Select a file to view its sections.");
 	}
 
 	// Step 2: file selected -> show its sections / routes.
@@ -591,7 +591,7 @@ export class PreviewSelectorModal extends Disposable {
 		const head = append(this.contextEl, $('.cc-ps-ctx-head'));
 		const back = append(head, $('button.cc-ps-back'));
 		append(back, $(ThemeIcon.asCSSSelector(Codicon.arrowLeft)));
-		append(back, $('span')).textContent = localize('cc.ps.back', "Volver a archivos");
+		append(back, $('span')).textContent = localize('cc.ps.back', "Back to files");
 		this.modalDisposables.add(addDisposableListener(back, EventType.CLICK, () => this.backToFiles()));
 
 		append(head, $('h3.cc-ps-ctx-title')).textContent = page.name;
@@ -601,10 +601,10 @@ export class PreviewSelectorModal extends Disposable {
 
 		const tabs = append(this.contextEl, $('.cc-ps-ctx-tabs'));
 		const secTab = append(tabs, $('.cc-ps-ctx-tab.cc-ps-ctx-tab-active'));
-		append(secTab, $('span')).textContent = localize('cc.ps.tabSections', "Secciones");
+		append(secTab, $('span')).textContent = localize('cc.ps.tabSections', "Sections");
 		append(secTab, $('span.cc-ps-badge')).textContent = String(page.sections.length);
 		const routeTab = append(tabs, $('.cc-ps-ctx-tab'));
-		append(routeTab, $('span')).textContent = localize('cc.ps.tabRoutes', "Rutas");
+		append(routeTab, $('span')).textContent = localize('cc.ps.tabRoutes', "Routes");
 		append(routeTab, $('span.cc-ps-badge')).textContent = String(page.routes.length);
 
 		const list = append(this.contextEl, $('.cc-ps-ctx-list'));
@@ -612,12 +612,12 @@ export class PreviewSelectorModal extends Disposable {
 			clearNode(list);
 			if (page.readError) {
 				append(list, $('p.cc-ps-ctx-note')).textContent =
-					localize('cc.ps.readError', "No se pudo leer este archivo. Revisa que siga existiendo y vuelve a intentarlo.");
+					localize('cc.ps.readError', "Could not read this file. Check that it still exists and try again.");
 				return;
 			}
 			if (page.sections.length === 0) {
 				append(list, $('p.cc-ps-ctx-note')).textContent =
-					localize('cc.ps.noSections', "No se detectaron secciones en este archivo.");
+					localize('cc.ps.noSections', "No sections were detected in this file.");
 				return;
 			}
 			for (const section of page.sections) {
@@ -638,12 +638,12 @@ export class PreviewSelectorModal extends Disposable {
 			clearNode(list);
 			if (page.readError) {
 				append(list, $('p.cc-ps-ctx-note')).textContent =
-					localize('cc.ps.readErrorRoutes', "No se pudieron leer las rutas de este archivo.");
+					localize('cc.ps.readErrorRoutes', "Could not read the routes in this file.");
 				return;
 			}
 			if (page.routes.length === 0) {
 				append(list, $('p.cc-ps-ctx-note')).textContent =
-					localize('cc.ps.noRoutes', "No se detectaron rutas internas en este archivo.");
+					localize('cc.ps.noRoutes', "No internal routes were detected in this file.");
 				return;
 			}
 			for (const route of page.routes) {
@@ -675,7 +675,7 @@ export class PreviewSelectorModal extends Disposable {
 		const head = append(this.contextEl, $('.cc-ps-ctx-head'));
 		const back = append(head, $('button.cc-ps-back'));
 		append(back, $(ThemeIcon.asCSSSelector(Codicon.arrowLeft)));
-		append(back, $('span')).textContent = localize('cc.ps.backSections', "Volver a secciones");
+		append(back, $('span')).textContent = localize('cc.ps.backSections', "Back to sections");
 		this.modalDisposables.add(addDisposableListener(back, EventType.CLICK, () => this.renderSections(page)));
 
 		append(head, $('h3.cc-ps-ctx-title')).textContent = section.name;
@@ -686,7 +686,7 @@ export class PreviewSelectorModal extends Disposable {
 
 		const big = append(this.contextEl, $('.cc-ps-detail-preview'));
 		const bigLoading = append(big, $('.cc-ps-thumb-loading'));
-		bigLoading.appendChild(createShinyText(localize('cc.ps.loadingSection', "Generando vista"), { speed: 2.2, color: '#9fb3d6', shineColor: '#ffffff' }));
+		bigLoading.appendChild(createShinyText(localize('cc.ps.loadingSection', "Generating preview"), { speed: 2.2, color: '#9fb3d6', shineColor: '#ffffff' }));
 		void this.showLiveSectionPreview(page, section, big, bigLoading);
 
 		const actions = append(this.contextEl, $('.cc-ps-detail-actions'));
@@ -719,7 +719,7 @@ export class PreviewSelectorModal extends Disposable {
 			addMeta(localize('cc.ps.metaComponent', "Componente"), section.component);
 		}
 		if (section.componentFile) {
-			addMeta(localize('cc.ps.metaComponentFile', "Archivo de componente"), section.componentFile);
+			addMeta(localize('cc.ps.metaComponentFile', "Component file"), section.componentFile);
 		}
 		if (section.componentImportedIn) {
 			addMeta(localize('cc.ps.metaImportedIn', "Importada en"), section.componentImportedIn);
@@ -761,7 +761,7 @@ export class PreviewSelectorModal extends Disposable {
 				return;
 			}
 			const input = this.browserViewWorkbenchService.getOrCreateLazy(this.captureBrowserId, {
-				title: localize('cc.ps.thumbBrowserTitle', "Capturas de previews")
+				title: localize('cc.ps.thumbBrowserTitle', "Preview captures")
 			});
 			this.activeCaptureInputs.add(input);
 			try {
@@ -861,7 +861,7 @@ export class PreviewSelectorModal extends Disposable {
 			return;
 		}
 		const input = this.browserViewWorkbenchService.getOrCreateLazy(this.sectionCaptureBrowserId, {
-			title: localize('cc.ps.thumbBrowserTitle', "Capturas de previews")
+			title: localize('cc.ps.thumbBrowserTitle', "Preview captures")
 		});
 		this.liveSectionInput = input;
 		this.activeCaptureInputs.add(input);
@@ -909,7 +909,7 @@ export class PreviewSelectorModal extends Disposable {
 
 	private showSectionPreviewError(loading: HTMLElement): void {
 		clearNode(loading);
-		loading.textContent = localize('cc.ps.sectionPreviewError', "No se pudo generar la vista previa");
+		loading.textContent = localize('cc.ps.sectionPreviewError', "Could not generate the preview");
 		loading.classList.add('cc-ps-thumb-error');
 	}
 

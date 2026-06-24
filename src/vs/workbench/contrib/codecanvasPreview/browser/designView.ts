@@ -41,7 +41,7 @@ const OPEN_DESIGN_EDITOR_COMMAND_ID = 'workbench.action.openDesignEditor';
 
 const designIcon = registerIcon('codecanvas-design-icon', Codicon.symbolCustomColor, localize('codecanvasDesignIcon', 'View icon of the CodeCanvas Design view.'));
 
-// Un cambio de archivo solo invalida el analisis si es relevante (config o fuente web)
+// A file change invalidates the analysis only when it is relevant (configuration or web source).
 // y no vive en carpetas de build/deps; si no, el output de un dev server entra en bucle.
 function isRelevantFileChange(resource: URI): boolean {
 	const segments = resource.path.split('/');
@@ -130,8 +130,8 @@ class DesignViewPane extends ViewPane {
 			}
 		}));
 
-		// Watcher: invalida cache cuando cambian archivos relevantes del proyecto.
-		// Con debounce para que un burst de guardados dispare un solo re-analisis.
+		// Watcher: invalidate the cache when relevant project files change.
+		// Debounced so a burst of saves triggers a single re-analysis.
 		this.refreshScheduler = this._register(new RunOnceScheduler(() => {
 			this.analyzer.invalidate();
 			if (this.isBodyVisible()) {
@@ -188,7 +188,7 @@ class DesignViewPane extends ViewPane {
 
 		append(wrapper, $('.codicon.codicon-loading'));
 		const text = append(wrapper, $('p'));
-		text.textContent = localize('cc.design.analyzing', "Analizando proyecto...");
+		text.textContent = localize('cc.design.analyzing', "Analyzing project...");
 	}
 
 	private async runAnalysis(): Promise<void> {
@@ -213,7 +213,7 @@ class DesignViewPane extends ViewPane {
 		clearNode(this.container);
 		const wrapper = append(this.container, $('.design-analysis.error'));
 		const p = append(wrapper, $('p'));
-		p.textContent = localize('cc.design.error', "Error al analizar el proyecto.");
+		p.textContent = localize('cc.design.error', "Could not analyze the project.");
 		this.appendReanalyzeButton(wrapper);
 	}
 
@@ -238,7 +238,7 @@ class DesignViewPane extends ViewPane {
 		const empty = append(wrapper, $('.design-empty'));
 		append(empty, $('.codicon.codicon-folder'));
 		const text = append(empty, $('p'));
-		text.textContent = localize('cc.design.noWorkspace', "Abre una carpeta en Code para analizar tus proyectos.");
+		text.textContent = localize('cc.design.noWorkspace', "Open a folder in Code to analyze your projects.");
 	}
 
 	private renderAppCard(wrapper: HTMLElement, app: AnalyzedApp): void {
@@ -279,7 +279,7 @@ class DesignViewPane extends ViewPane {
 			const openBtn = append(card, $('button.design-open-editor-button')) as HTMLButtonElement;
 			append(openBtn, $('span.codicon.codicon-open-preview'));
 			append(openBtn, $('span.design-open-editor-label')).textContent =
-				localize('cc.design.open', "Abrir editor de Design");
+				localize('cc.design.open', "Open Design editor");
 			openBtn.addEventListener('click', () => { void this.enterDesign(); });
 		} else {
 			statusIcon.className = 'codicon codicon-close';

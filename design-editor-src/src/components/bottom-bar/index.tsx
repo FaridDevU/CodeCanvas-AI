@@ -31,7 +31,7 @@ function fileToImageData(file: File): Promise<ImageContentData> {
                 mimeType,
                 originPath: '',
             });
-        reader.onerror = () => reject(reader.error ?? new Error('No se pudo leer el archivo'));
+        reader.onerror = () => reject(reader.error ?? new Error('Could not read the file'));
         reader.readAsDataURL(file);
     });
 }
@@ -84,7 +84,7 @@ export const BottomBar = observer(() => {
         }
         const frame = activeFrame();
         if (!frame) {
-            toast.error(`No hay un frame activo para insertar el ${kind}.`);
+            toast.error(`No active frame is available to insert ${kind}.`);
             editorEngine.state.insertMode = null;
             return;
         }
@@ -93,7 +93,7 @@ export const BottomBar = observer(() => {
             await editorEngine.insert.insertMediaFile(frame, imageData);
         } catch (err) {
             console.error('insert media failed:', err);
-            toast.error(`No se pudo insertar el ${kind}.`);
+            toast.error(`Could not insert ${kind}.`);
         } finally {
             editorEngine.state.insertMode = null;
         }
@@ -103,28 +103,28 @@ export const BottomBar = observer(() => {
         {
             key: 'text',
             icon: Icons.Text,
-            tooltip: 'Insertar texto',
+            tooltip: 'Insert text',
             active: insertMode === InsertMode.INSERT_TEXT,
             onClick: () => armInsert(InsertMode.INSERT_TEXT),
         },
         {
             key: 'box',
             icon: Icons.Square,
-            tooltip: 'Insertar caja',
+            tooltip: 'Insert box',
             active: insertMode === InsertMode.INSERT_DIV,
             onClick: () => armInsert(InsertMode.INSERT_DIV),
         },
         {
             key: 'image',
             icon: Icons.Image,
-            tooltip: 'Insertar imagen',
+            tooltip: 'Insert image',
             active: false,
             onClick: () => imageInputRef.current?.click(),
         },
         {
             key: 'video',
             icon: Icons.Video,
-            tooltip: 'Insertar video',
+            tooltip: 'Insert video',
             active: false,
             onClick: () => videoInputRef.current?.click(),
         },

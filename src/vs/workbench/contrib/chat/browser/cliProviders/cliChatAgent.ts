@@ -6,9 +6,8 @@
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { Disposable, DisposableStore, IDisposable } from '../../../../../base/common/lifecycle.js';
-import { localize2 } from '../../../../../nls.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { ContextKeyExpr, IContextKeyService, RawContextKey } from '../../../../../platform/contextkey/common/contextkey.js';
+import { ContextKeyExpr, RawContextKey } from '../../../../../platform/contextkey/common/contextkey.js';
 import { nullExtensionDescription } from '../../../../services/extensions/common/extensions.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';

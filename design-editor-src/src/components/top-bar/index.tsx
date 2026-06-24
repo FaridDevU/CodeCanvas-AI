@@ -116,7 +116,7 @@ export const TopBar = observer(() => {
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="mt-1" hideArrow>
-                        Pantalla completa / pestaña
+                        Full window / tab
                     </TooltipContent>
                 </Tooltip>
             </div>

@@ -62,9 +62,9 @@ export const ProjectPicker = ({ apps, onChoose }: ProjectPickerProps) => {
 
     return (
         <div className="h-screen w-screen overflow-auto bg-background text-foreground flex flex-col items-center py-12 px-8">
-            <h1 className="text-2xl font-medium mb-1">Elige un proyecto</h1>
+            <h1 className="text-2xl font-medium mb-1">Choose a project</h1>
             <p className="text-sm text-muted-foreground mb-8">
-                Se detectaron {apps.length} proyectos en la carpeta abierta. Elige cual abrir en Design.
+                Found {apps.length} projects in the open folder. Choose one to open in Design.
             </p>
 
             <div className="grid gap-6 w-full max-w-5xl" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
@@ -94,12 +94,12 @@ export const ProjectPicker = ({ apps, onChoose }: ProjectPickerProps) => {
                                         {preview?.status === 'failed' ? (
                                             <>
                                                 <Icons.ExclamationTriangle className="h-6 w-6" />
-                                                <span className="text-xs">No se pudo iniciar el preview</span>
+                                                <span className="text-xs">Could not start the preview</span>
                                             </>
                                         ) : (
                                             <>
                                                 <Icons.LoadingSpinner className="h-6 w-6 animate-spin" />
-                                                <span className="text-xs">Iniciando servidor...</span>
+                                                <span className="text-xs">Starting server...</span>
                                             </>
                                         )}
                                     </div>
@@ -127,7 +127,7 @@ export const ProjectPicker = ({ apps, onChoose }: ProjectPickerProps) => {
                                     className="mt-2 rounded-md bg-teal-600 hover:bg-teal-500 text-white text-sm py-1.5 transition-colors disabled:opacity-50"
                                     disabled={preview?.status === 'failed'}
                                 >
-                                    Abrir en Design
+                                    Open in Design
                                 </button>
                             </div>
                         </div>

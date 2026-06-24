@@ -286,8 +286,11 @@
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	padding-left: 8px;
 	font-size: 11px;
-	max-width: 65%;
+	max-width: 70%;
+	/* Opaque so we paint over the native footer's account/target text instead of overlapping it. */
+	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
 }
 
 .cc-agent-status-sep {

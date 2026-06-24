@@ -25,10 +25,12 @@ export const CC_AGENTS: readonly IAgentDescriptor[] = [
 	// allow-any-unicode-next-line
 	{ id: 'claude', label: 'Claude', description: 'Análisis profundo y razonamiento avanzado' },
 	// allow-any-unicode-next-line
-	{ id: 'kimi', label: 'Kimi', description: 'Respuestas rápidas y concisas', comingSoon: true },
+	{ id: 'kimi', label: 'Kimi', description: 'Fast, concise responses', comingSoon: true },
 	// allow-any-unicode-next-line
-	{ id: 'codex', label: 'Codex', description: 'Experto en código y herramientas', comingSoon: true },
-	{ id: 'copilot', label: 'Copilot', description: 'Asistencia en tiempo real' },
+	{ id: 'codex', label: 'Codex', description: 'Expert code and tool assistance', comingSoon: true },
+	// Copilot routes through the GitHub agentHost, which hangs ("Thinking" forever) after the first
+	// reply — the known issue that motivated the Claude CLI pivot. Hidden until it runs on the CLI pipe.
+	{ id: 'copilot', label: 'Copilot', description: 'Real-time assistance', comingSoon: true },
 ];
 
 const AGENT_CLASS_PREFIX = 'cc-agent-';
@@ -52,7 +54,7 @@ export class AgentSelectorControl extends Disposable {
 	private readonly _onUseOwnApi = this._register(new Emitter<void>());
 	readonly onUseOwnApi: Event<void> = this._onUseOwnApi.event;
 
-	/** Fired when the user clicks "Vincular ahora" for the current agent. */
+	/** Fired when the user clicks "Link now" for the current agent. */
 	private readonly _onLink = this._register(new Emitter<void>());
 	readonly onLink: Event<void> = this._onLink.event;
 
@@ -65,7 +67,6 @@ export class AgentSelectorControl extends Disposable {
 	private readonly _triggerLabel: HTMLElement;
 	private readonly _menu: HTMLElement;
 	private readonly _statusRow: HTMLElement;
-	private readonly _statusDot: HTMLElement;
 	private readonly _statusText: HTMLElement;
 	private readonly _linkButton: HTMLElement;
 	private readonly _logoutButton: HTMLElement;
@@ -132,20 +133,20 @@ export class AgentSelectorControl extends Disposable {
 
 		this._register(addDisposableListener(getWindow(container).document, EventType.CLICK, () => this._toggle(false)));
 
-		// Account status: red dot + "Vincular ahora" when unlinked, green dot + email when linked.
+		// Account status: red dot + "Link now" when unlinked, green dot + email when linked.
 		// Anchored bottom-right of the panel (next to the "Default Approvals" footer) via CSS.
 		this._statusRow = append(this._themeTarget, $('.cc-agent-status'));
 		append(this._statusRow, $('span.cc-agent-status-sep')); // divider, matches the "Local | Default Approvals" one
-		this._statusDot = append(this._statusRow, $('span.cc-agent-status-dot'));
+		append(this._statusRow, $('span.cc-agent-status-dot'));
 		this._statusText = append(this._statusRow, $('span.cc-agent-status-text'));
 		this._linkButton = append(this._statusRow, $('button.cc-agent-status-link'));
-		this._linkButton.textContent = localize('cc.link', "Vincular ahora");
+		this._linkButton.textContent = localize('cc.link', "Link now");
 		this._register(addDisposableListener(this._linkButton, EventType.CLICK, e => { e.stopPropagation(); this._onLink.fire(); }));
 
 		// Sign out: shown only when linked (CSS keys off the status state class).
 		this._logoutButton = append(this._statusRow, $('button.cc-agent-status-logout'));
 		// allow-any-unicode-next-line
-		this._logoutButton.textContent = localize('cc.logout', "Cerrar sesión");
+		this._logoutButton.textContent = localize('cc.logout', "Sign out");
 		this._register(addDisposableListener(this._logoutButton, EventType.CLICK, e => { e.stopPropagation(); this._onLogout.fire(); }));
 
 		this._apply();

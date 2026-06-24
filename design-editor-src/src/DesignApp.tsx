@@ -68,7 +68,7 @@ const EditorLayout = observer(() => {
 	if (error) {
 		return (
 			<div className="h-screen w-screen flex flex-col items-center justify-center gap-4 text-white px-8 text-center">
-				<p className="text-sm text-foreground-secondary max-w-md">Error al iniciar el proyecto: {error}</p>
+				<p className="text-sm text-foreground-secondary max-w-md">Failed to start the project: {error}</p>
 				<button
 					onClick={() => window.location.reload()}
 					className="rounded-md bg-teal-600 hover:bg-teal-500 text-white text-sm px-4 py-1.5 transition-colors"
@@ -86,7 +86,7 @@ const EditorLayout = observer(() => {
 	if (!isProjectReady) {
 		return (
 			<div className="h-screen w-screen flex items-center justify-center text-white">
-				Cargando proyecto...
+				Loading project...
 			</div>
 		);
 	}

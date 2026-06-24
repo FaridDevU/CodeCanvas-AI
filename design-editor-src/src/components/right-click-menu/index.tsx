@@ -145,26 +145,26 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         // place) so Moveable can take over — without corrupting the rest of the layout.
         if (editorEngine.elements.selectedCanConvertToEditable) {
             editing.push({
-                label: 'Convertir a edición libre',
+                label: 'Convert to free editing',
                 action: () => void editorEngine.elements.convertSelectedToEditable(),
                 icon: <Icons.Box className="mr-2 h-4 w-4" />,
             });
         }
         if (editorEngine.elements.selectedCanRevertToStatic) {
             editing.push({
-                label: 'Volver a estático',
+                label: 'Return to static',
                 action: () => void editorEngine.elements.convertSelectedToStatic(),
                 icon: <Icons.Box className="mr-2 h-4 w-4" />,
             });
         }
         if (editorEngine.elements.selectedCanReorder) {
             editing.push({
-                label: 'Traer al frente',
+                label: 'Bring to front',
                 action: () => void editorEngine.elements.bringSelectedToFront(),
                 icon: <Icons.ArrowUp className="mr-2 h-4 w-4" />,
             });
             editing.push({
-                label: 'Enviar al fondo',
+                label: 'Send to back',
                 action: () => void editorEngine.elements.sendSelectedToBack(),
                 icon: <Icons.ArrowDown className="mr-2 h-4 w-4" />,
             });
@@ -173,7 +173,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         // into its parent. Both persist to the HTML and undo atomically.
         if (editorEngine.group.canGroupElements()) {
             editing.push({
-                label: 'Agrupar',
+                label: 'Group',
                 action: () => void editorEngine.group.groupSelectedElements(),
                 icon: <Icons.Group className="mr-2 h-4 w-4" />,
                 hotkey: Hotkey.GROUP,
@@ -181,7 +181,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         }
         if (editorEngine.group.canUngroupElement() && tag === 'div') {
             editing.push({
-                label: 'Desagrupar',
+                label: 'Ungroup',
                 action: () => void editorEngine.group.ungroupSelectedElement(),
                 icon: <Icons.Group className="mr-2 h-4 w-4" />,
                 hotkey: Hotkey.UNGROUP,

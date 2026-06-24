@@ -58,7 +58,7 @@ const ALLOWED_PAGE_EXTS = ['.tsx', '.ts', '.jsx', '.js'];
 const JSX_SEARCH_ROOTS = ['src', 'app', 'pages', 'components'];
 /** Max profundidad al buscar JSX. */
 const JSX_MAX_DEPTH = 3;
-/** Max archivos que revisamos antes de rendirnos. */
+/** Maximum files to inspect before stopping. */
 const JSX_MAX_FILES = 60;
 /** Max profundidad de escaneo de carpetas. */
 const SCAN_MAX_DEPTH = 5;
@@ -272,7 +272,7 @@ export class DesignProjectAnalyzer {
 			}
 		}
 
-		// Si no se detecto app desde package.json, pero hay index.html, registrar como HTML estatico.
+		// If no app was detected from package.json but index.html exists, register it as static HTML.
 		// Solo si NO estamos ya dentro de una app HTML: las subcarpetas con su propio index.html son
 		// PAGINAS de la app raiz (las recoge analyzeStaticHtml), no apps separadas.
 		let registeredHtmlApp = false;
@@ -297,7 +297,7 @@ export class DesignProjectAnalyzer {
 			}
 		}
 
-		// Si el package.json tenia workspaces, priorizamos esas rutas.
+		// If package.json has workspaces, prioritize those paths.
 		if (hasPackageJson && workspacePaths.length > 0) {
 			for (const wsPath of workspacePaths) {
 				const cleanPath = wsPath.replace(/\/\*$/, '');
@@ -355,7 +355,7 @@ export class DesignProjectAnalyzer {
 
 		const reason = editable
 			? undefined
-			: (!hasReact ? 'No usa React' : !hasJsxFiles ? 'No encontro archivos JSX/TSX editables' : 'Framework no soportado');
+			: (!hasReact ? 'Does not use React' : !hasJsxFiles ? 'No editable JSX/TSX files found' : 'Unsupported framework');
 
 		return {
 			name: pkg.name || dir.path.split('/').pop() || 'app',

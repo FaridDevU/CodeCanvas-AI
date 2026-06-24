@@ -23,7 +23,7 @@ import { ICommandService } from '../../../../platform/commands/common/commands.j
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { ITerminalService, ITerminalGroupService, ITerminalInstance } from '../../terminal/browser/terminal.js';
-import { DesignProjectAnalyzer, IGNORED_DIRS } from './designProjectAnalyzer.js';
+import { DesignProjectAnalyzer } from './designProjectAnalyzer.js';
 import { TOGGLE_DESIGN_FULL_WINDOW_COMMAND_ID } from './designFullWindowMode.js';
 
 // Save status surfaced to the Design canvas toolbar. Design writes straight to disk on every
@@ -103,7 +103,7 @@ export class DesignEditorBridge extends Disposable {
 		super();
 		this.analyzer = instantiationService.createInstance(DesignProjectAnalyzer);
 
-		// After a quiet period the "Cambios guardados" pill fades back to idle so it isn't permanent.
+		// After a quiet period the "Changes saved" pill fades back to idle so it isn't permanent.
 		this.resetSavedScheduler = this._register(new RunOnceScheduler(() => {
 			if (this._saveState === 'saved') {
 				this.setSaveState('idle');

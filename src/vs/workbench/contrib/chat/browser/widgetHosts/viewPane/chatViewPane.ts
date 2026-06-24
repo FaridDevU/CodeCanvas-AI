@@ -363,7 +363,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		refreshAccountStatus();
 		// Re-check when the window regains focus (e.g. after completing login in a terminal).
 		this._register(this.hostService.onDidChangeFocus(focused => { if (focused) { refreshAccountStatus(); } }));
-		// "Vincular ahora" → run the agent's login command in a fresh terminal, then re-check.
+		// "Link now" → run the agent's login command in a fresh terminal, then re-check.
 		this._register(agentSelector.onLink(async () => {
 			const command = AGENT_LOGIN_COMMAND[agentSelector.currentAgent.id];
 			if (!command) {
@@ -379,7 +379,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 				return;
 			}
 			// allow-any-unicode-next-line
-			const terminal = await this.terminalService.createAndFocusTerminal({ config: { name: `Cerrar sesión ${agentSelector.currentAgent.label}` } });
+			const terminal = await this.terminalService.createAndFocusTerminal({ config: { name: `Sign out ${agentSelector.currentAgent.label}` } });
 			terminal.sendText(command, true);
 		}));
 		this._register(agentSelector.onHistory(() => {

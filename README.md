@@ -2,6 +2,6 @@
 
 # CodeCanvas AI
 
-### En construcción.
+### Under construction.
 
 </div>

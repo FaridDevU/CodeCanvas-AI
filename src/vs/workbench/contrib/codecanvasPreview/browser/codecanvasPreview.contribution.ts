@@ -376,7 +376,7 @@ async function activateVisualEditForAnchor(services: ICodeCanvasPreviewServices,
 		await waitForPreviewIdle(model);
 		await model.toggleVisualEdit(`${VISUAL_EDIT_SELECTOR_PREFIX}${anchor}`, true);
 	} catch {
-		services.notificationService.warn(localize('visualEdit.sectionFailed', "No se pudo activar la edicion visual para esta seccion."));
+		services.notificationService.warn(localize('visualEdit.sectionFailed', "Could not enable visual editing for this section."));
 	}
 }
 
@@ -957,7 +957,7 @@ registerAction2(class StopInspectAction extends Action2 {
 	}
 });
 
-// Edicion visual + diffs
+// Visual editing + diffs
 let pendingDelta: IDomDelta | null = null;
 
 function getElementSelector(elementData: IElementData): string {
@@ -1326,7 +1326,7 @@ class CodeCanvasPreviewButtonContribution extends Disposable implements IWorkben
 						name: localize('cc.verPreview.name', "Ver Preview"),
 						text: `$(eye) ${localize('cc.verPreview', "Ver Preview")}`,
 						ariaLabel: localize('cc.verPreview', "Ver Preview"),
-						tooltip: localize('cc.verPreview.tooltip', "Abrir vista previa del proyecto"),
+						tooltip: localize('cc.verPreview.tooltip', "Open project preview"),
 						command: 'codecanvas.preview.open',
 					}, 'status.codecanvasPreviewButton', StatusbarAlignment.LEFT, 100);
 				}
