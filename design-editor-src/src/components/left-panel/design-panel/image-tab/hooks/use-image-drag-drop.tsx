@@ -96,7 +96,7 @@ export const useImageDragDrop = (onUpload?: (files: FileList) => Promise<void>) 
         editorEngine.state.editorMode = EditorMode.DESIGN;
         // Always clear insert mode on drag end, even when the drop happened outside the canvas or
         // was cancelled (gesture.tsx only clears it on a successful in-canvas drop). Otherwise the
-        // editor stays stuck in "Insertar imagen" and later clicks misbehave.
+        // editor stays stuck in "Insert image" and later clicks misbehave.
         editorEngine.state.insertMode = null;
     }, []);
 

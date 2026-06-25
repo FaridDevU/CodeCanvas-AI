@@ -6,6 +6,7 @@
 import { URI } from '../../../../../../base/common/uri.js';
 import { joinPath } from '../../../../../../base/common/resources.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IDefaultAccountService } from '../../../../../../platform/defaultAccount/common/defaultAccount.js';
 
 export type AccountState = 'linked' | 'unlinked' | 'unavailable';
 
@@ -19,6 +20,7 @@ export interface IAccountStatus {
 export const AGENT_LOGIN_COMMAND: Record<string, string> = {
 	claude: 'claude auth login',
 	codex: 'codex login',
+	// Copilot signs in through VS Code's native GitHub auth, not a terminal command.
 };
 
 /** Terminal command that signs the user out, per agent. */
@@ -56,7 +58,7 @@ function decodeJwtEmail(token: string | undefined): string | undefined {
  * local credential file — the same one its `... auth login` writes — so it reflects reality
  * without going through the agent host.
  */
-export async function getAccountStatus(agentId: string, fileService: IFileService, home: URI): Promise<IAccountStatus> {
+export async function getAccountStatus(agentId: string, fileService: IFileService, home: URI, defaultAccountService: IDefaultAccountService): Promise<IAccountStatus> {
 	switch (agentId) {
 		case 'claude': {
 			const json = await readJson(fileService, joinPath(home, '.claude.json'));
@@ -70,7 +72,13 @@ export async function getAccountStatus(agentId: string, fileService: IFileServic
 			}
 			return { state: 'linked', email: decodeJwtEmail(json.tokens?.id_token) };
 		}
-		// Copilot uses VS Code's GitHub sign-in; kimi has no backend yet.
+		case 'copilot': {
+			// This is the same account service used by VS Code's profile menu and the bundled
+			// Copilot extension. Do not inspect CLI credentials for a GitHub Copilot session.
+			const account = await defaultAccountService.getDefaultAccount();
+			return account ? { state: 'linked', email: account.accountName } : { state: 'unlinked' };
+		}
+		// Kimi has no backend yet.
 		default:
 			return { state: 'unavailable' };
 	}

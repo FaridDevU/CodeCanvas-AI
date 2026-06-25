@@ -70,20 +70,20 @@ interface IPageModel {
 	readError?: string;
 }
 
-// Friendly Spanish labels inferred from a section id/class keyword.
+// Friendly labels inferred from a section id/class keyword.
 const SECTION_LABELS: { readonly match: RegExp; readonly label: string }[] = [
-	{ match: /hero|intro|banner/i, label: localize('cc.ps.sec.hero', "Hero principal") },
-	{ match: /feature|benefit|beneficio/i, label: localize('cc.ps.sec.features', "Beneficios") },
-	{ match: /template|plantilla/i, label: localize('cc.ps.sec.templates', "Plantillas") },
-	{ match: /pric|precio|plan/i, label: localize('cc.ps.sec.pricing', "Precios") },
-	{ match: /testimonial|review|opinion/i, label: localize('cc.ps.sec.testimonials', "Testimonios") },
-	{ match: /faq|pregunta/i, label: localize('cc.ps.sec.faq', "Preguntas frecuentes") },
-	{ match: /contact|contacto/i, label: localize('cc.ps.sec.contact', "Contacto") },
-	{ match: /about|acerca|nosotros/i, label: localize('cc.ps.sec.about', "Acerca de") },
-	{ match: /gallery|galer/i, label: localize('cc.ps.sec.gallery', "Galer\u00eda") },
-	{ match: /cta|call.?to.?action|footer-cta/i, label: localize('cc.ps.sec.cta', "CTA final") },
-	{ match: /footer|pie/i, label: localize('cc.ps.sec.footer', "Pie de p\u00e1gina") },
-	{ match: /nav|header|menu/i, label: localize('cc.ps.sec.nav', "Navegaci\u00f3n") },
+	{ match: /hero|intro|banner/i, label: localize('cc.ps.sec.hero', "Hero") },
+	{ match: /feature|benefit|beneficio/i, label: localize('cc.ps.sec.features', "Features") },
+	{ match: /template|plantilla/i, label: localize('cc.ps.sec.templates', "Templates") },
+	{ match: /pric|precio|plan/i, label: localize('cc.ps.sec.pricing', "Pricing") },
+	{ match: /testimonial|review|opinion/i, label: localize('cc.ps.sec.testimonials', "Testimonials") },
+	{ match: /faq|pregunta/i, label: localize('cc.ps.sec.faq', "FAQ") },
+	{ match: /contact|contacto/i, label: localize('cc.ps.sec.contact', "Contact") },
+	{ match: /about|acerca|nosotros/i, label: localize('cc.ps.sec.about', "About") },
+	{ match: /gallery|galer/i, label: localize('cc.ps.sec.gallery', "Gallery") },
+	{ match: /cta|call.?to.?action|footer-cta/i, label: localize('cc.ps.sec.cta', "Final CTA") },
+	{ match: /footer|pie/i, label: localize('cc.ps.sec.footer', "Footer") },
+	{ match: /nav|header|menu/i, label: localize('cc.ps.sec.nav', "Navigation") },
 ];
 
 function friendlyName(anchor: string, headingText: string): string {
@@ -185,13 +185,13 @@ export class PreviewSelectorModal extends Disposable {
 		const headingText = append(heading, $('.cc-ps-heading-text'));
 		this.titleEl = append(headingText, $('h2.cc-ps-title'));
 		append(headingText, $('p.cc-ps-subtitle')).textContent =
-			localize('cc.ps.subtitle', "Elige el archivo correcto viendo cada p\u00e1gina en vivo antes de abrirla.");
+			localize('cc.ps.subtitle', "Pick the right file by viewing each page live before opening it.");
 
 		const search = append(header, $('.cc-ps-search'));
 		append(search, $(ThemeIcon.asCSSSelector(Codicon.search) + '.cc-ps-search-icon'));
 		this.searchEl = append(search, $('input.cc-ps-search-input')) as HTMLInputElement;
 		this.searchEl.type = 'text';
-		this.searchEl.placeholder = localize('cc.ps.searchPlaceholder', "Filtrar previews\u2026");
+		this.searchEl.placeholder = localize('cc.ps.searchPlaceholder', "Filter previews\u2026");
 		this.modalDisposables.add(addDisposableListener(this.searchEl, EventType.INPUT, () => this.filterCards()));
 
 		const close = append(header, $('button.cc-ps-close'));
@@ -597,7 +597,7 @@ export class PreviewSelectorModal extends Disposable {
 		append(head, $('h3.cc-ps-ctx-title')).textContent = page.name;
 		append(head, $('p.cc-ps-ctx-path')).textContent = page.rel;
 		append(head, $('p.cc-ps-ctx-step')).textContent =
-			localize('cc.ps.step2', "Paso 2 de 2 \u2014 elige qu\u00e9 quieres abrir");
+			localize('cc.ps.step2', "Step 2 of 2 \u2014 choose what to open");
 
 		const tabs = append(this.contextEl, $('.cc-ps-ctx-tabs'));
 		const secTab = append(tabs, $('.cc-ps-ctx-tab.cc-ps-ctx-tab-active'));
@@ -630,7 +630,7 @@ export class PreviewSelectorModal extends Disposable {
 				append(top, $('span.cc-ps-sec-name')).textContent = section.name;
 				append(info, $('span.cc-ps-sec-desc')).textContent = section.description;
 				const open = append(item, $('button.cc-ps-sec-open'));
-				open.textContent = localize('cc.ps.view', "Ver");
+				open.textContent = localize('cc.ps.view', "View");
 				this.modalDisposables.add(addDisposableListener(item, EventType.CLICK, () => this.renderSectionDetail(page, section)));
 			}
 		};
@@ -696,13 +696,13 @@ export class PreviewSelectorModal extends Disposable {
 			append(btn, $('span')).textContent = label;
 			this.modalDisposables.add(addDisposableListener(btn, EventType.CLICK, run));
 		};
-		addAction(Codicon.eye, localize('cc.ps.openPreview', "Abrir en preview"), true,
+		addAction(Codicon.eye, localize('cc.ps.openPreview', "Open in preview"), true,
 			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'preview' }));
-		addAction(Codicon.edit, localize('cc.ps.editSection', "Editar secci\u00f3n"), false,
+		addAction(Codicon.edit, localize('cc.ps.editSection', "Edit section"), false,
 			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, action: 'edit' }));
-		addAction(Codicon.code, localize('cc.ps.goToCode', "Ir al c\u00f3digo"), false,
+		addAction(Codicon.code, localize('cc.ps.goToCode', "Go to code"), false,
 			() => void this.finish({ uri: page.uri, anchor: section.anchor.startsWith('#') ? section.anchor : undefined, componentFile: section.componentFile, action: 'code' }));
-		addAction(Codicon.link, localize('cc.ps.copyLink', "Copiar enlace"), false,
+		addAction(Codicon.link, localize('cc.ps.copyLink', "Copy link"), false,
 			() => this.copyLink(page, section));
 
 		// Metadata block.
@@ -712,20 +712,20 @@ export class PreviewSelectorModal extends Disposable {
 			append(row, $('span.cc-ps-meta-key')).textContent = key;
 			append(row, $('span.cc-ps-meta-val')).textContent = value;
 		};
-		addMeta(localize('cc.ps.metaFile', "Archivo"), page.rel);
-		addMeta(localize('cc.ps.metaDom', "ID en el DOM"), section.anchor);
-		addMeta(localize('cc.ps.metaOrder', "Orden en la p\u00e1gina"), `${section.order} / ${page.sections.length}`);
+		addMeta(localize('cc.ps.metaFile', "File"), page.rel);
+		addMeta(localize('cc.ps.metaDom', "DOM ID"), section.anchor);
+		addMeta(localize('cc.ps.metaOrder', "Order on page"), `${section.order} / ${page.sections.length}`);
 		if (section.component) {
-			addMeta(localize('cc.ps.metaComponent', "Componente"), section.component);
+			addMeta(localize('cc.ps.metaComponent', "Component"), section.component);
 		}
 		if (section.componentFile) {
 			addMeta(localize('cc.ps.metaComponentFile', "Component file"), section.componentFile);
 		}
 		if (section.componentImportedIn) {
-			addMeta(localize('cc.ps.metaImportedIn', "Importada en"), section.componentImportedIn);
+			addMeta(localize('cc.ps.metaImportedIn', "Imported in"), section.componentImportedIn);
 		}
 		if (section.componentDependencies) {
-			addMeta(localize('cc.ps.metaDependencies', "Dependencias"), section.componentDependencies);
+			addMeta(localize('cc.ps.metaDependencies', "Dependencies"), section.componentDependencies);
 		}
 	}
 

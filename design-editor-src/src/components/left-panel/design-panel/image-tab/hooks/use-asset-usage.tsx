@@ -1,5 +1,5 @@
 // Scans the project's markup/source files for asset references so the Images tab can flag files in
-// /assets that no element references anymore ("Sin usar"). Read-only: it never deletes anything.
+// /assets that no element references anymore ("Unused"). Read-only: it never deletes anything.
 //
 // Matching is by BASENAME and errs toward "used": any token ending in a known media extension in any
 // scanned file contributes its filename. A false "used" (not flagging an actually-orphan file) is

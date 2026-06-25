@@ -31,7 +31,7 @@ export const CcMoveableHud = () => {
             }}
         >
             <div style={{ color: '#fff', marginBottom: 2 }}>CC-MOVEABLE-EVENT (debug)</div>
-            {events.length === 0 ? '(sin eventos aún — selecciona/arrastra)' : events.join('\n')}
+            {events.length === 0 ? '(no events yet — select/drag)' : events.join('\n')}
         </div>
     );
 };

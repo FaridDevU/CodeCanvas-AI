@@ -135,7 +135,7 @@ export function useWorkbenchFile(path: string) {
 /** Uploads media files into `folder` (project-relative) via the workbench bridge, base64-encoded. */
 export async function uploadFilesToWorkbench(folder: string, files: File[]): Promise<void> {
     const root = getActiveProjectRoot();
-    if (!root) throw new Error('No hay proyecto activo');
+    if (!root) throw new Error('No active project');
     // Ensure the destination exists (no-op if already there).
     try {
         await workbench.mkdir(abs(root, folder));
@@ -146,7 +146,7 @@ export async function uploadFilesToWorkbench(folder: string, files: File[]): Pro
         const destRel = childPath(folder, file.name);
         // Never overwrite an existing asset silently: fail with a clear message instead.
         if (await workbench.exists(abs(root, destRel))) {
-            throw new Error(`Ya existe un archivo "${file.name}" en este destino. Renombralo o borra el anterior antes de subir.`);
+            throw new Error(`A file named "${file.name}" already exists at this destination. Rename it or delete the previous one before uploading.`);
         }
         const buf = new Uint8Array(await file.arrayBuffer());
         let bin = '';
@@ -158,16 +158,16 @@ export async function uploadFilesToWorkbench(folder: string, files: File[]): Pro
 
 export async function renameWorkbenchFile(oldPath: string, newPath: string): Promise<void> {
     const root = getActiveProjectRoot();
-    if (!root) throw new Error('No hay proyecto activo');
+    if (!root) throw new Error('No active project');
     // Never clobber an existing file on rename: fail clearly so the user picks another name.
     if (await workbench.exists(abs(root, newPath))) {
-        throw new Error(`Ya existe un archivo en "${newPath}". Elige otro nombre.`);
+        throw new Error(`A file already exists at "${newPath}". Choose another name.`);
     }
     await workbench.rename(abs(root, oldPath), abs(root, newPath));
 }
 
 export async function deleteWorkbenchFile(path: string): Promise<void> {
     const root = getActiveProjectRoot();
-    if (!root) throw new Error('No hay proyecto activo');
+    if (!root) throw new Error('No active project');
     await workbench.delete(abs(root, path));
 }

@@ -108,13 +108,13 @@ export const ImagesTab = observer(() => {
             {/* Make it explicit this is the project's file library, not "what's on the canvas". Deleting
                 an image from the canvas does NOT remove the file here, and vice versa. */}
             <div className="flex flex-col gap-0.5">
-                <span className="text-xs font-medium text-foreground-primary">Biblioteca de assets</span>
+                <span className="text-xs font-medium text-foreground-primary">Asset library</span>
                 <span className="text-[11px] leading-tight text-foreground-tertiary">
-                    Archivos del proyecto. Eliminar del lienzo no borra el archivo; usa el menú para borrarlo aquí.
+                    Project files. Removing from the canvas does not delete the file; use the menu to delete it here.
                 </span>
                 {usageReady && unusedCount > 0 && (
                     <span className="text-[11px] leading-tight text-amber-500">
-                        {unusedCount} sin usar (no referenciados en el código). Revisa y bórralos con el menú si quieres.
+                        {unusedCount} unused (not referenced in code). Review and delete them from the menu if you want.
                     </span>
                 )}
             </div>

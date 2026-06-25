@@ -22,21 +22,18 @@ export interface IAgentDescriptor {
 
 /** The agents shown in the selector. Color + logo per agent live in agentSelectorControl.css. */
 export const CC_AGENTS: readonly IAgentDescriptor[] = [
-	// allow-any-unicode-next-line
-	{ id: 'claude', label: 'Claude', description: 'Análisis profundo y razonamiento avanzado' },
-	// allow-any-unicode-next-line
+	{ id: 'claude', label: 'Claude', description: 'Deep analysis and advanced reasoning' },
 	{ id: 'kimi', label: 'Kimi', description: 'Fast, concise responses', comingSoon: true },
-	// allow-any-unicode-next-line
 	{ id: 'codex', label: 'Codex', description: 'Expert code and tool assistance', comingSoon: true },
-	// Copilot routes through the GitHub agentHost, which hangs ("Thinking" forever) after the first
-	// reply — the known issue that motivated the Claude CLI pivot. Hidden until it runs on the CLI pipe.
-	{ id: 'copilot', label: 'Copilot', description: 'Real-time assistance', comingSoon: true },
+	// Copilot runs in VS Code's local chat session. The bundled GitHub Copilot extension owns
+	// its OAuth, entitlement and model registration; it is not a Copilot CLI session.
+	{ id: 'copilot', label: 'Copilot', description: 'Real-time assistance' },
 ];
 
 const AGENT_CLASS_PREFIX = 'cc-agent-';
 
 /**
- * Header for the chat panel: "Nuevo chat" / "Historial" buttons plus a dropdown to pick
+ * Header for the chat panel: "New chat" / "History" buttons plus a dropdown to pick
  * the active AI agent (Claude/Kimi/Codex/Copilot). Picking an agent stamps `cc-agent-<id>`
  * on the theme target so the whole panel takes the agent color.
  * Phase 1: drives theming + emits events; wiring to the model provider is a later phase.
@@ -84,16 +81,16 @@ export class AgentSelectorControl extends Disposable {
 
 		const root = this._root = append(container, $('.cc-agent-header'));
 
-		// Action row: "+ Nuevo chat" | "Historial"
+		// Action row: "+ New chat" | "History"
 		const actions = append(root, $('.cc-agent-actions'));
 		const newChat = append(actions, $('button.cc-agent-action'));
 		append(newChat, $('span.codicon.codicon-add'));
-		append(newChat, $('span')).textContent = localize('cc.newChat', "Nuevo chat");
+		append(newChat, $('span')).textContent = localize('cc.newChat', "New chat");
 		this._register(addDisposableListener(newChat, EventType.CLICK, () => this._onNewChat.fire()));
 
 		const history = append(actions, $('button.cc-agent-action'));
 		append(history, $('span.codicon.codicon-history'));
-		append(history, $('span')).textContent = localize('cc.history', "Historial");
+		append(history, $('span')).textContent = localize('cc.history', "History");
 		this._register(addDisposableListener(history, EventType.CLICK, () => this._onHistory.fire()));
 
 		// Agent selector
@@ -114,8 +111,7 @@ export class AgentSelectorControl extends Disposable {
 			append(text, $('span.cc-agent-item-label')).textContent = agent.label;
 			if (agent.comingSoon) {
 				item.classList.add('coming-soon');
-				// allow-any-unicode-next-line
-				append(item, $('span.cc-agent-item-soon')).textContent = localize('cc.comingSoon', "Próximamente");
+				append(item, $('span.cc-agent-item-soon')).textContent = localize('cc.comingSoon', "Coming soon");
 			} else {
 				append(item, $('span.cc-agent-item-check.codicon.codicon-check'));
 			}
@@ -127,8 +123,8 @@ export class AgentSelectorControl extends Disposable {
 		const apiItem = append(this._menu, $('.cc-agent-item.cc-agent-api'));
 		append(apiItem, $('span.cc-agent-api-icon.codicon.codicon-key'));
 		const apiText = append(apiItem, $('.cc-agent-item-text'));
-		append(apiText, $('span.cc-agent-item-label')).textContent = localize('cc.useOwnApi', "Usar API propia");
-		append(apiText, $('span.cc-agent-item-desc')).textContent = localize('cc.useOwnApiDesc', "Conecta tu propia clave de API");
+		append(apiText, $('span.cc-agent-item-label')).textContent = localize('cc.useOwnApi', "Use your own API key");
+		append(apiText, $('span.cc-agent-item-desc')).textContent = localize('cc.useOwnApiDesc', "Connect your own API key");
 		this._register(addDisposableListener(apiItem, EventType.CLICK, e => { e.stopPropagation(); this._onUseOwnApi.fire(); this._toggle(false); }));
 
 		this._register(addDisposableListener(getWindow(container).document, EventType.CLICK, () => this._toggle(false)));
@@ -157,9 +153,9 @@ export class AgentSelectorControl extends Disposable {
 		this._statusRow.classList.remove('linked', 'unlinked', 'unavailable');
 		this._statusRow.classList.add(status.state);
 		if (status.state === 'linked') {
-			this._statusText.textContent = status.email ?? localize('cc.linked', "Cuenta vinculada");
+			this._statusText.textContent = status.email ?? localize('cc.linked', "Account linked");
 		} else if (status.state === 'unlinked') {
-			this._statusText.textContent = localize('cc.notLinked', "No vinculado");
+			this._statusText.textContent = localize('cc.notLinked', "Not linked");
 		} else {
 			this._statusText.textContent = '';
 		}

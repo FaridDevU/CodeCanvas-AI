@@ -65,6 +65,9 @@ const CLI_MODELS: readonly ICliModelDescriptor[] = [
 		],
 		format: 'claude-stream-json',
 	},
+	// Copilot is intentionally NOT a CLI descriptor: it runs in VS Code's local chat session using
+	// the bundled GitHub Copilot extension's own models (vendor 'copilot'), talking to Copilot's
+	// servers with the user's existing session — not a spawned terminal.
 	{
 		vendor: 'codex-cli',
 		agentId: 'codex',

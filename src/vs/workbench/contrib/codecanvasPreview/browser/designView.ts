@@ -41,8 +41,8 @@ const OPEN_DESIGN_EDITOR_COMMAND_ID = 'workbench.action.openDesignEditor';
 
 const designIcon = registerIcon('codecanvas-design-icon', Codicon.symbolCustomColor, localize('codecanvasDesignIcon', 'View icon of the CodeCanvas Design view.'));
 
-// A file change invalidates the analysis only when it is relevant (configuration or web source).
-// y no vive en carpetas de build/deps; si no, el output de un dev server entra en bucle.
+// A file change invalidates the analysis only when it is relevant (configuration or web source)
+// and does not live in build/deps folders; otherwise a dev server's output loops endlessly.
 function isRelevantFileChange(resource: URI): boolean {
 	const segments = resource.path.split('/');
 	const basename = (segments.pop() || '').toLowerCase();
@@ -93,7 +93,7 @@ class DesignViewPane extends ViewPane {
 	private opening = false;
 	private readonly analyzer: DesignProjectAnalyzer;
 	private container: HTMLElement | undefined;
-	// Crece en cada analisis; un resultado solo se renderiza si sigue siendo el ultimo.
+	// Grows on each analysis; a result is only rendered if it is still the latest.
 	private analysisVersion = 0;
 	private readonly refreshScheduler: RunOnceScheduler;
 
@@ -123,9 +123,9 @@ class DesignViewPane extends ViewPane {
 				if (this.analyzer.isStale()) {
 					this.analyzer.invalidate();
 				}
-				// El sidebar NO debe forzar la apertura del editor de Design cada vez que se hace
-				// visible (era invasivo y podia provocar foco/loop raros). El usuario abre Design
-				// manualmente; aqui solo refrescamos el analisis.
+				// The sidebar must NOT force the Design editor open every time it becomes
+				// visible (that was invasive and could cause odd focus/loop issues). The user opens
+				// Design manually; here we only refresh the analysis.
 				this.runAnalysis();
 			}
 		}));
@@ -196,7 +196,7 @@ class DesignViewPane extends ViewPane {
 		try {
 			const analysis = await this.analyzer.analyze();
 			if (version !== this.analysisVersion) {
-				return; // un analisis mas nuevo ya esta en curso; no pisar su render
+				return; // a newer analysis is already in progress; don't clobber its render
 			}
 			this.renderAnalysis(analysis);
 		} catch (err) {
@@ -255,7 +255,7 @@ class DesignViewPane extends ViewPane {
 		const devInfo = append(card, $('.design-app-dev'));
 		devInfo.textContent = app.devCommand
 			? `${app.devCommand}${app.devPort ? ' :' + app.devPort : ''}`
-			: localize('cc.design.noDevScript', "Sin script de desarrollo");
+			: localize('cc.design.noDevScript', "No dev script");
 
 		// Stack tags
 		if (app.stack.length > 0) {
@@ -272,7 +272,7 @@ class DesignViewPane extends ViewPane {
 		const statusIcon = append(statusRow, $('span'));
 		if (app.editable) {
 			statusIcon.className = 'codicon codicon-check';
-			append(statusRow, $('span.status-text')).textContent = localize('cc.design.editable', "Editable por Design");
+			append(statusRow, $('span.status-text')).textContent = localize('cc.design.editable', "Editable in Design");
 
 			// Explicit "open" action. The sidebar no longer auto-opens the editor on visibility
 			// (that was invasive), so this button is the way to enter Design from the panel.
@@ -283,7 +283,7 @@ class DesignViewPane extends ViewPane {
 			openBtn.addEventListener('click', () => { void this.enterDesign(); });
 		} else {
 			statusIcon.className = 'codicon codicon-close';
-			append(statusRow, $('span.status-text')).textContent = localize('cc.design.notSupported', "No soportado");
+			append(statusRow, $('span.status-text')).textContent = localize('cc.design.notSupported', "Not supported");
 			if (app.reason) {
 				const reason = append(statusRow, $('span.reason'));
 				reason.textContent = `(${app.reason})`;
@@ -295,7 +295,7 @@ class DesignViewPane extends ViewPane {
 			const pagesHeader = append(card, $('.design-app-pages-header'));
 			const pagesIcon = append(pagesHeader, $('span.codicon.codicon-chevron-right'));
 			const pagesLabel = append(pagesHeader, $('span'));
-			pagesLabel.textContent = localize('cc.design.pages', "Paginas") + ` (${app.pages.length})`;
+			pagesLabel.textContent = localize('cc.design.pages', "Pages") + ` (${app.pages.length})`;
 
 			const pagesList = append(card, $('.design-app-pages-list'));
 			for (const page of app.pages) {
@@ -314,7 +314,7 @@ class DesignViewPane extends ViewPane {
 	private appendReanalyzeButton(wrapper: HTMLElement): void {
 		const footer = append(wrapper, $('.design-footer'));
 		const btn = append(footer, $('button'));
-		btn.textContent = localize('cc.design.reanalyze', "Re-analizar");
+		btn.textContent = localize('cc.design.reanalyze', "Re-analyze");
 		btn.addEventListener('click', () => {
 			this.analyzer.invalidate();
 			this.renderAnalyzing();

@@ -264,7 +264,7 @@ export class InsertManager {
 
         // Empty <p> renders as nothing, so give inserted text visible placeholder content. If inline
         // editing engages the user types over it; otherwise it stays visible and editable.
-        const textContent = isText ? 'Texto' : null;
+        const textContent = isText ? 'Text' : null;
 
         const actionElement: ActionElement = {
             domId,
@@ -382,7 +382,7 @@ export class InsertManager {
         if (this.isHtmlProject()) {
             const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
             if (!assetRel) {
-                toast.warning('No se pudo leer el asset para guardarlo.');
+                toast.warning('Could not read the asset to save it.');
                 return;
             }
             const pageFile = this.pageFileForFrame(frame);
@@ -391,7 +391,7 @@ export class InsertManager {
             if (result.ok) {
                 frame.view.reload();
             } else {
-                toast.warning('No se pudo actualizar la imagen en el HTML.');
+                toast.warning('Could not update the image in the HTML.');
             }
             return;
         }
@@ -479,7 +479,7 @@ export class InsertManager {
         if (isHtml) {
             const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
             if (!assetRel) {
-                toast.warning('No se pudo leer el asset para guardarlo.');
+                toast.warning('Could not read the asset to save it.');
                 return;
             }
             src = assetSrcForPage(assetRel, this.pageFileForFrame(frame));
@@ -574,7 +574,7 @@ export class InsertManager {
         if (this.isHtmlProject()) {
             const assetRel = await saveAsset(imageData.fileName, imageData.content, imageData.originPath);
             if (!assetRel) {
-                toast.warning('No se pudo leer el asset para guardarlo.');
+                toast.warning('Could not read the asset to save it.');
                 return;
             }
             bgUrl = assetSrcForPage(assetRel, this.pageFileForFrame(frame));

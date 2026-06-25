@@ -69,14 +69,14 @@ export const useStartProject = () => {
                         const { ready } = await workbench.waitForPort(port);
                         if (!ready) {
                             throw new Error(
-                                `El servidor de "${app.name}" no respondió en el puerto ${port}. ` +
-                                `Revisa la terminal integrada (el dev server) y reintenta.`,
+                                `The "${app.name}" server did not respond on port ${port}. ` +
+                                `Check the integrated terminal (the dev server) and try again.`,
                             );
                         }
                     }
                 }
                 if (!port) {
-                    throw new Error(`No se pudo determinar el puerto de "${app.name}".`);
+                    throw new Error(`Could not determine the port for "${app.name}".`);
                 }
                 const frame: Frame = {
                     id: frameIdFor(app.rootPath),

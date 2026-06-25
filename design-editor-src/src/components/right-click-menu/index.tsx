@@ -46,7 +46,7 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
     // Hands the current selection/app context to the native workbench chat (Copilot).
     // There is no chat inside Design; this only opens the real one with context.
     const askCopilotItem: MenuItem = {
-        label: 'Preguntar a Copilot',
+        label: 'Ask Copilot',
         action: () => void sendToWorkbenchChat(editorEngine),
         icon: <Icons.Sparkles className="mr-2 h-4 w-4" />,
     };
@@ -189,14 +189,14 @@ export const RightClickMenu = observer(({ children }: RightClickMenuProps) => {
         }
         if (isText) {
             editing.push({
-                label: 'Editar texto',
+                label: 'Edit text',
                 action: () => editorEngine.text.editSelectedElement(),
                 icon: <Icons.Pencil className="mr-2 h-4 w-4" />,
                 hotkey: Hotkey.ENTER,
             });
         }
         editing.push({
-            label: 'Eliminar',
+            label: 'Delete',
             action: () => editorEngine.elements.delete(),
             icon: <Icons.Trash className="mr-2 h-4 w-4" />,
             hotkey: Hotkey.DELETE,

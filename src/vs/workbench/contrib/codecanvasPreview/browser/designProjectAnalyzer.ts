@@ -54,13 +54,13 @@ const APP_ROUTER_PATHS = ['src/app', 'app'];
 const PAGES_ROUTER_PATHS = ['src/pages', 'pages'];
 const ALLOWED_PAGE_EXTS = ['.tsx', '.ts', '.jsx', '.js'];
 
-/** Carpetas donde buscamos JSX/TSX para determinar "editable". */
+/** Folders where we look for JSX/TSX to determine "editable". */
 const JSX_SEARCH_ROOTS = ['src', 'app', 'pages', 'components'];
-/** Max profundidad al buscar JSX. */
+/** Max depth when searching for JSX. */
 const JSX_MAX_DEPTH = 3;
 /** Maximum files to inspect before stopping. */
 const JSX_MAX_FILES = 60;
-/** Max profundidad de escaneo de carpetas. */
+/** Max folder scan depth. */
 const SCAN_MAX_DEPTH = 5;
 
 const WEB_FRAMEWORKS = new Set(['nextjs', 'vite', 'cra', 'remix', 'astro', 'nuxtjs', 'sveltekit']);
@@ -120,8 +120,8 @@ function isInternalStaticAppUri(uri: URI): boolean {
 }
 
 /**
- * Decide si un package.json representa una app web real que merece aparecer
- * en el panel de Design, o si es un paquete auxiliar / libreria / test / etc.
+ * Decide whether a package.json represents a real web app worth showing
+ * in the Design panel, or whether it's an auxiliary package / library / test / etc.
  */
 function isCandidateApp(
 	_pkg: PackageJson,
@@ -129,13 +129,13 @@ function isCandidateApp(
 	scripts: Record<string, string>,
 	_isWorkspaceRoot: boolean,
 ): boolean {
-	// Tiene framework web reconocido
+	// Has a recognized web framework
 	const hasWebFramework = _stack.some(s => WEB_FRAMEWORKS.has(s));
 	if (hasWebFramework) {
 		return true;
 	}
 
-	// Tiene script dev/start que parezca dev server web
+	// Has a dev/start script that looks like a web dev server
 	const devScript = scripts['dev'] || scripts['start'];
 	if (devScript && typeof devScript === 'string') {
 		const low = devScript.toLowerCase();
@@ -170,7 +170,7 @@ export class DesignProjectAnalyzer {
 			await this.scanFolder(folder.uri, seenUris, seenAppUris, apps);
 		}
 
-		// Filtrar apps HTML que estan anidadas dentro de otra app ya detectada
+		// Filter out HTML apps nested inside another already-detected app
 		const filteredApps = apps.filter(app => {
 			if (app.framework !== 'html') {
 				return true;
@@ -239,7 +239,7 @@ export class DesignProjectAnalyzer {
 		for (const child of children) {
 			if (child.isFile && isPackageJson(child.name)) {
 				hasPackageJson = true;
-				// Leer y parsear una sola vez: sirve para el analisis y los workspaces.
+				// Read and parse once: used for both the analysis and the workspaces.
 				let pkg: PackageJson | undefined;
 				try {
 					const file = await this.fileService.readFile(child.resource);
@@ -257,7 +257,7 @@ export class DesignProjectAnalyzer {
 							apps.push(app);
 						}
 					}
-					// Workspaces para monorepos
+					// Workspaces for monorepos
 					if (pkg.workspaces) {
 						if (Array.isArray(pkg.workspaces)) {
 							workspacePaths = pkg.workspaces;
@@ -273,8 +273,8 @@ export class DesignProjectAnalyzer {
 		}
 
 		// If no app was detected from package.json but index.html exists, register it as static HTML.
-		// Solo si NO estamos ya dentro de una app HTML: las subcarpetas con su propio index.html son
-		// PAGINAS de la app raiz (las recoge analyzeStaticHtml), no apps separadas.
+		// Only if we are NOT already inside an HTML app: subfolders with their own index.html are
+		// PAGES of the root app (analyzeStaticHtml picks them up), not separate apps.
 		let registeredHtmlApp = false;
 		if (!addedApp && indexHtmlResource && !isInternalStaticAppUri(dir) && !insideStaticHtmlApp) {
 			const app = await this.analyzeStaticHtml(dir, indexHtmlResource);
@@ -288,8 +288,8 @@ export class DesignProjectAnalyzer {
 			}
 		}
 
-		// Escaneo de subcarpetas - SIEMPRE seguimos, incluso si hay package.json,
-		// para detectar apps anidadas como design-editor-src.
+		// Subfolder scan - we ALWAYS continue, even if there is a package.json,
+		// to detect nested apps like design-editor-src.
 		const subdirs: URI[] = [];
 		for (const child of children) {
 			if (child.isDirectory && !IGNORED_DIRS.has(child.name)) {
@@ -334,7 +334,7 @@ export class DesignProjectAnalyzer {
 			}
 		}
 
-		// Filtrar: solo apps web reales, no librerias/tests/tooling
+		// Filter: only real web apps, not libraries/tests/tooling
 		if (!isCandidateApp(pkg, stack, scripts, isWorkspaceRoot)) {
 			return null;
 		}

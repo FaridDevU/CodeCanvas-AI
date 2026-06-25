@@ -73,7 +73,7 @@ export const BottomBar = observer(() => {
 
     const handleMediaPicked = async (
         e: React.ChangeEvent<HTMLInputElement>,
-        kind: 'imagen' | 'video',
+        kind: 'image' | 'video',
     ) => {
         const file = e.target.files?.[0];
         e.target.value = ''; // allow re-picking the same file
@@ -218,7 +218,7 @@ export const BottomBar = observer(() => {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => void handleMediaPicked(e, 'imagen')}
+                        onChange={(e) => void handleMediaPicked(e, 'image')}
                         // Dismissing the dialog fires `cancel` (not `change`) in Chromium: clear any
                         // armed insert state so the toolbar never stays stuck after a cancel.
                         onCancel={() => { editorEngine.state.insertMode = null; }}

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// CodeCanvas title bar controls: the "Ver Preview", "History" and "Share" pills.
+// CodeCanvas title bar controls: the "View Preview", "History" and "Share" pills.
 // The original VS Code command center (search) is left enabled in the title bar center.
 
 import './media/titleBarDeviceControl.css';
@@ -118,7 +118,7 @@ function avatarUrlWithSize(url: string, size: number): string {
 
 /** A title-bar avatar that shows the GitHub profile photo of the account signed into
  *  CodeCanvas (the same native GitHub session used by Copilot / the Accounts menu).
- *  Clicking it opens a small account menu; "Ver foto de perfil" shows the photo in-app. */
+ *  Clicking it opens a small account menu; "View profile photo" shows the photo in-app. */
 class AvatarTitleBarItem extends BaseActionViewItem {
 	private avatarEl: HTMLElement | undefined;
 	private avatarUrl: string | undefined;
@@ -140,7 +140,7 @@ class AvatarTitleBarItem extends BaseActionViewItem {
 		container.classList.add('cc-titlebar-avatar-item');
 
 		const avatar = dom.append(container, dom.$('div.cc-titlebar-avatar'));
-		avatar.title = localize('cc.userProfile.tooltip', "Cuenta");
+		avatar.title = localize('cc.userProfile.tooltip', "Account");
 		this.avatarEl = avatar;
 		this.renderAvatar();
 		void this.loadSession();
@@ -211,14 +211,14 @@ class AvatarTitleBarItem extends BaseActionViewItem {
 	private showMenu(anchor: HTMLElement): void {
 		// Reuse the native Accounts menu (sign in to Copilot, manage account preferences,
 		// manage language model access, per-account actions) so this avatar is the single
-		// account entry point. "Ver foto de perfil" is added on top when a photo is available.
+		// account entry point. "View profile photo" is added on top when a photo is available.
 		const menu = this.menuService.createMenu(MenuId.AccountsContext, this.contextKeyService);
 		const actions: IAction[] = [];
 
 		if (this.avatarUrl) {
 			actions.push(toAction({
 				id: 'cc.gh.viewPhoto',
-				label: localize('cc.gh.viewPhoto', "Ver foto de perfil"),
+				label: localize('cc.gh.viewPhoto', "View profile photo"),
 				class: ThemeIcon.asClassName(Codicon.account),
 				run: () => this.showPhoto(),
 			}));

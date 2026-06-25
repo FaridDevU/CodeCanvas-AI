@@ -97,7 +97,7 @@ export class CodeManager {
                     const pageFile = this.pageFileForFrame(target.frameId);
                     const result = await applyHtmlTextEdit(target.oid, action.newContent, pageFile);
                     if (!result.ok && result.reason === 'has-children') {
-                        this.notifyNotSaved('No se guardo el texto: el elemento tiene contenido interno (icono, span...).');
+                        this.notifyNotSaved('Text not saved: the element has inner content (icon, span...).');
                     }
                 }
                 break;
@@ -124,7 +124,7 @@ export class CodeManager {
                 if (result.ok) {
                     this.reloadFrame(target.frameId);
                 } else {
-                    this.notifyNotSaved('No se pudo guardar el elemento en el HTML.');
+                    this.notifyNotSaved('Could not save the element to the HTML.');
                 }
                 break;
             }
@@ -135,7 +135,7 @@ export class CodeManager {
                 const pageFile = this.pageFileForFrame(target.frameId);
                 const result = await applyHtmlRemove(target.oid, pageFile);
                 if (result.ok) this.reloadFrame(target.frameId);
-                else this.notifyNotSaved('No se pudo borrar el elemento en el HTML.');
+                else this.notifyNotSaved('Could not delete the element from the HTML.');
                 break;
             }
             case 'move-element': {
@@ -146,7 +146,7 @@ export class CodeManager {
                 if (result.ok) {
                     if (result.changed !== false) this.reloadFrame(target.frameId);
                 } else {
-                    this.notifyNotSaved('No se pudo mover el elemento en el HTML.');
+                    this.notifyNotSaved('Could not move the element in the HTML.');
                 }
                 break;
             }
@@ -160,14 +160,14 @@ export class CodeManager {
                     pageFile,
                 );
                 if (result.ok) this.reloadFrame(action.parent.frameId);
-                else this.notifyNotSaved('No se pudo agrupar los elementos en el HTML.');
+                else this.notifyNotSaved('Could not group the elements in the HTML.');
                 break;
             }
             case 'ungroup-elements': {
                 const pageFile = this.pageFileForFrame(action.parent.frameId);
                 const result = await applyHtmlUngroup(action.container.oid, pageFile);
                 if (result.ok) this.reloadFrame(action.parent.frameId);
-                else this.notifyNotSaved('No se pudo desagrupar el elemento en el HTML.');
+                else this.notifyNotSaved('Could not ungroup the element in the HTML.');
                 break;
             }
             // Note: media drop/swap/background use insert-element / update-style (both handled), not

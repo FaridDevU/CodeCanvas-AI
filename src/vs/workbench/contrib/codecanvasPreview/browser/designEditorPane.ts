@@ -9,6 +9,7 @@ import { FileAccess } from '../../../../base/common/network.js';
 import { localize } from '../../../../nls.js';
 import { EditorPane } from '../../../browser/parts/editor/editorPane.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
@@ -28,6 +29,7 @@ export class DesignEditorPane extends EditorPane {
 		@IThemeService themeService: IThemeService,
 		@IStorageService storageService: IStorageService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
 		super(DesignEditorPane.ID, group, telemetryService, themeService, storageService);
 	}
@@ -65,7 +67,8 @@ export class DesignEditorPane extends EditorPane {
 		}
 		// The bundle lives at <appRoot>/resources/app/design-editor, next to `out`, so we escape
 		// the file root with `vs/../../`.
-		const bundleUri = FileAccess.asBrowserUri('vs/../../resources/app/design-editor/index.html').with({ query: `v=${Date.now()}` });
+		const locale = this.configurationService.getValue<string>('codecanvas.language') || 'en';
+		const bundleUri = FileAccess.asBrowserUri('vs/../../resources/app/design-editor/index.html').with({ query: `v=${Date.now()}&locale=${locale}` });
 		this.webviewElement.src = bundleUri.toString(true);
 	}
 

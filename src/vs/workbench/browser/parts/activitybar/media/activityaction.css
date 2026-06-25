@@ -298,7 +298,7 @@ border-radius. The .action-label has z-index:1 so icon+text stay above. */
 	right: 0;
 }
 
-/* CodeCanvas AI: sin barra/punto lateral; el item activo usa fondo redondeado */
+/* CodeCanvas AI: no side bar/dot; the active item uses a rounded background */
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item.checked .active-item-indicator:before {
 	border-left: none !important;
 	display: none;
@@ -333,7 +333,7 @@ border-radius. The .action-label has z-index:1 so icon+text stay above. */
 	box-sizing: border-box;
 }
 
-/* CodeCanvas AI: fondo redondeado en el item activo (icono + label) */
+/* CodeCanvas AI: rounded background on the active item (icon + label) */
 .monaco-workbench .activitybar > .content :not(.monaco-menu) > .monaco-action-bar .action-item.checked .action-label.codicon {
 	background-color: var(--vscode-commandCenter-activeBackground, rgba(255, 255, 255, 0.10));
 }

@@ -14,18 +14,18 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
  * widget options if multiple chat views ever need independent agents.
  */
 
-/** Vendors of the CLI agents we register ourselves (Claude/Codex). */
-const CLI_VENDORS = ['claude-cli', 'codex-cli'];
-
 /**
  * Agent id (from the agent selector) → predicate over a model's vendor. The picker shows
- * only models whose vendor passes. Our CLI agents scope to their own vendor; Copilot keeps
- * the original picker minus our CLI agents. Unmapped agents (e.g. kimi) show all models.
+ * only models whose vendor passes. Each wired agent scopes to the provider that owns it;
+ * unmapped agents (e.g. kimi) show all models.
  */
 const AGENT_FILTER: Record<string, (vendor: string) => boolean> = {
 	claude: vendor => vendor === 'claude-cli',
 	codex: vendor => vendor === 'codex-cli',
-	copilot: vendor => !CLI_VENDORS.includes(vendor),
+	// `extensions/copilot` registers the normal GitHub Copilot chat models under this
+	// vendor. Do not include `copilotcli` here: that provider belongs to CLI/background
+	// sessions, not the standard local Copilot chat.
+	copilot: vendor => vendor === 'copilot',
 };
 
 let _activeAgentId: string | undefined;

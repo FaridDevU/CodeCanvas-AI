@@ -210,9 +210,9 @@ export const ImageItem = ({ image, projectId, branchId, onImageDragStart, onImag
                 {unused && (
                     <div
                         className="absolute top-2 left-2 rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium text-black"
-                        title="No referenciado en el código del proyecto"
+                        title="Not referenced in the project's code"
                     >
-                        Sin usar
+                        Unused
                     </div>
                 )}
 

@@ -109,7 +109,7 @@ export const TextEditor = observer(() => {
         }
 
         // End editing ONLY on an explicit pointer press outside the editor. A bare blur is not enough:
-        // opening "Editar texto" from the right-click menu makes the menu return focus to its trigger
+        // opening "Edit text" from the right-click menu makes the menu return focus to its trigger
         // as it closes (and overlay refreshes can momentarily steal focus), which blurred the editor
         // and closed it instantly. We track real outside pointer presses; transient focus losses just
         // re-focus so editing survives until Enter/Escape or a deliberate click outside.

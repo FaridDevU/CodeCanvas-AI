@@ -40,6 +40,6 @@ export const STACK_RULES: readonly StackRule[] = [
 	{ tech: 'svelte', name: 'Svelte', dependencies: ['svelte'], files: [] },
 	{ tech: 'angular', name: 'Angular', dependencies: ['@angular/core'], files: [] },
 
-	// CRA (no tiene regla propia en stack-analyser; se detecta por react-scripts)
+	// CRA (no rule of its own in stack-analyser; detected via react-scripts)
 	{ tech: 'cra', name: 'Create React App', dependencies: ['react-scripts'], files: [] },
 ];

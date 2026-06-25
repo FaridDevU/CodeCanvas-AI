@@ -24,7 +24,7 @@ const NON_CONVERTIBLE_TAGS = new Set([
     'html', 'head', 'body', 'script', 'style', 'template', 'meta', 'link', 'base', 'title', 'noscript',
 ]);
 
-// Mid-point for z-order. "Traer al frente" climbs above it, "enviar al fondo" sinks below it but never
+// Mid-point for z-order. "Bring to front" climbs above it, "Send to back" sinks below it but never
 // below 1 — staying positive so an element can't disappear behind an opaque card's white background
 // (a negative z-index paints behind the page content = the element vanishes). Word-like layering only.
 const Z_BASE = 1000;
@@ -90,19 +90,19 @@ export class ElementsManager {
     selectedIsLocked = false;
     // Oids pinned-in-place this session (mirrors locallyEditableOids for the lock state).
     private lockedOids = new Set<string>();
-    // Highest z-index handed out this session by "traer al frente". Climbs above Z_BASE so each call
+    // Highest z-index handed out this session by "Bring to front". Climbs above Z_BASE so each call
     // tops everything previously fronted. ponytail: per-session counter, not a true sibling max — re-
-    // click "al frente" if a value persisted from a past session outranks it.
+    // click "Bring to front" if a value persisted from a past session outranks it.
     private zTop = Z_BASE;
-    // Lowest z-index handed out by "enviar al fondo". Sinks below Z_BASE (floored at 1, never negative)
+    // Lowest z-index handed out by "Send to back". Sinks below Z_BASE (floored at 1, never negative)
     // so each call goes under everything previously sent back without vanishing behind opaque content.
     private zBottom = Z_BASE;
     // Oids of ORIGINAL elements converted to free editing this session. Lets the Moveable gate light up
     // immediately after a conversion (no reload), while the persistent data-cc-editable marker (written
     // to the source) is what survives across sessions.
     private locallyEditableOids = new Set<string>();
-    // Subset of locallyEditableOids that are CONVERTED ORIGINALS (data-cc-editable), so "Volver a
-    // estático" is offered for them but never for inserted media/box/text.
+    // Subset of locallyEditableOids that are CONVERTED ORIGINALS (data-cc-editable), so "Return to
+    // static" is offered for them but never for inserted media/box/text.
     private convertedOids = new Set<string>();
 
     constructor(private editorEngine: EditorEngine) {
@@ -146,20 +146,20 @@ export class ElementsManager {
         return !!rect && (rect.width ?? 0) >= 1 && (rect.height ?? 0) >= 1;
     }
 
-    /** Whether "Convertir a edición libre" should be offered: a static element that can become movable
+    /** Whether "Convert to free editing" should be offered: a static element that can become movable
      *  — either a locked one (unlock in place) or a flow element (pin absolute). */
     get selectedCanConvertToEditable(): boolean {
         if (this.selectedIsFreelyEditable) return false;
         return this.selectedIsLocked || this.selectedCanPin;
     }
 
-    /** Whether "Volver a estático" should be offered: any freely-movable element (media, insert, or
+    /** Whether "Return to static" should be offered: any freely-movable element (media, insert, or
      *  converted original) — making it static pins it in place (keeps geometry, releases Moveable). */
     get selectedCanRevertToStatic(): boolean {
         return this.selectedIsFreelyEditable;
     }
 
-    /** Whether z-order ("traer al frente" / "enviar al fondo") applies: any positioned element (free or
+    /** Whether z-order ("Bring to front" / "Send to back") applies: any positioned element (free or
      *  pinned). z-index only affects out-of-flow boxes that can overlap. */
     get selectedCanReorder(): boolean {
         return this._selected.length === 1 && (this.selectedIsAbsolute || this.selectedIsLocked);
@@ -244,7 +244,7 @@ export class ElementsManager {
                 return;
             }
             if (!this.selectedCanPin) {
-                toast.warning('Este elemento no se puede convertir a edición libre.');
+                toast.warning('This element cannot be converted to free editing.');
                 return;
             }
             await this.convertOriginalToEditable(el);
@@ -252,7 +252,7 @@ export class ElementsManager {
             // Surface the failure instead of swallowing the rejected promise (the old `void` path made
             // a broken convert look like "nothing happened" with no toast and no log).
             console.error('[CC] convertSelectedToEditable failed', err);
-            toast.error('No se pudo convertir a edición libre.');
+            toast.error('Could not convert to free editing.');
         }
     };
 
@@ -356,7 +356,7 @@ export class ElementsManager {
             this.setSelectedIsDesignCreated(false);
             this.setSelectedIsConverted(false);
             console.error('[CC] reparent-to-body failed', result);
-            toast.error('No se pudo convertir a edición libre.');
+            toast.error('Could not convert to free editing.');
             return;
         }
 
@@ -369,11 +369,11 @@ export class ElementsManager {
             /* best-effort */
         }
         void this.editorEngine.overlay.refresh();
-        toast.success('Elemento convertido a edición libre (en el lienzo).');
+        toast.success('Element converted to free editing (on the canvas).');
     };
 
     /**
-     * "Volver a estático" = PIN IN PLACE. Keeps the element's current absolute geometry but stamps
+     * "Return to static" = PIN IN PLACE. Keeps the element's current absolute geometry but stamps
      * data-cc-locked so Moveable releases it — it stays exactly where the user dropped it instead of
      * jumping back to flow (the old strip-geometry behavior). Works for media, inserts, and converted
      * originals alike. Reverse of unlockSelected.
@@ -390,10 +390,10 @@ export class ElementsManager {
                 this.pageFileFor(el),
             );
             void this.editorEngine.overlay.refresh();
-            toast.success('Elemento fijado en su lugar.');
+            toast.success('Element pinned in place.');
         } catch (err) {
             console.error('[CC] convertSelectedToStatic failed', err);
-            toast.error('No se pudo fijar el elemento.');
+            toast.error('Could not pin the element.');
         }
     };
 
@@ -404,7 +404,7 @@ export class ElementsManager {
         this.setSelectedIsLocked(false);
         await applyHtmlAttrEdit(el.oid ?? undefined, { [CC_LOCKED_ATTR]: null }, this.pageFileFor(el));
         void this.editorEngine.overlay.refresh();
-        toast.success('Elemento liberado para edición libre.');
+        toast.success('Element released for free editing.');
     };
 
     // Resolves the source .html file backing the element's current page (frame URL -> pathname).
@@ -472,7 +472,7 @@ export class ElementsManager {
         return true;
     };
 
-    /** "Traer al frente": z-index above every positioned element actually on the page. A nested-free
+    /** "Bring to front": z-index above every positioned element actually on the page. A nested-free
      *  element is reparented to <body> first so the z-order is global, not trapped in its card. */
     bringSelectedToFront = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
@@ -485,19 +485,19 @@ export class ElementsManager {
             this.zTop = target;
             if (!(await this.isBodyChild(el))) {
                 const ok = await this.reparentToBodyAtCurrentPos(el, target);
-                toast[ok ? 'success' : 'error'](ok ? 'Traído al frente.' : 'No se pudo traer al frente.');
+                toast[ok ? 'success' : 'error'](ok ? 'Brought to front.' : 'Could not bring to front.');
                 return;
             }
             await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
             applyZIndexDirect(view, el.domId, target);
-            toast.success('Traído al frente.');
+            toast.success('Brought to front.');
         } catch (err) {
             console.error('[CC] bringSelectedToFront failed', err);
-            toast.error('No se pudo traer al frente.');
+            toast.error('Could not bring to front.');
         }
     };
 
-    /** "Enviar al fondo": z-index below every positioned element on the page, floored at 1 so it never
+    /** "Send to back": z-index below every positioned element on the page, floored at 1 so it never
      *  vanishes behind page content. A nested-free element is reparented to <body> first. */
     sendSelectedToBack = async () => {
         const el = this._selected.length === 1 ? this._selected[0] : null;
@@ -509,15 +509,15 @@ export class ElementsManager {
             this.zBottom = target;
             if (!(await this.isBodyChild(el))) {
                 const ok = await this.reparentToBodyAtCurrentPos(el, target);
-                toast[ok ? 'success' : 'error'](ok ? 'Enviado al fondo.' : 'No se pudo enviar al fondo.');
+                toast[ok ? 'success' : 'error'](ok ? 'Sent to back.' : 'Could not send to back.');
                 return;
             }
             await this.editorEngine.style.updateMultiple({ zIndex: String(target) });
             applyZIndexDirect(view, el.domId, target);
-            toast.success('Enviado al fondo.');
+            toast.success('Sent to back.');
         } catch (err) {
             console.error('[CC] sendSelectedToBack failed', err);
-            toast.error('No se pudo enviar al fondo.');
+            toast.error('Could not send to back.');
         }
     };
 

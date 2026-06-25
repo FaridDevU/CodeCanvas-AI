@@ -42,6 +42,7 @@ import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js'
 import { CodeCanvasSnapshotsView } from './snapshotsView.js';
 import { PreviewSelectorModal } from './previewSelectorModal.js';
 import { Range } from '../../../../editor/common/core/range.js';
+import { IConfigurationRegistry, Extensions as ConfigurationExtensions, ConfigurationScope } from '../../../../platform/configuration/common/configurationRegistry.js';
 
 const PREVIEW_ID = 'codecanvas.preview';
 const STATUS_ID = 'status.codecanvasPreview';
@@ -1323,9 +1324,9 @@ class CodeCanvasPreviewButtonContribution extends Disposable implements IWorkben
 			if (isWeb) {
 				if (!this.statusEntry) {
 					this.statusEntry = statusbarService.addEntry({
-						name: localize('cc.verPreview.name', "Ver Preview"),
-						text: `$(eye) ${localize('cc.verPreview', "Ver Preview")}`,
-						ariaLabel: localize('cc.verPreview', "Ver Preview"),
+						name: localize('cc.verPreview.name', "View Preview"),
+						text: `$(eye) ${localize('cc.verPreview', "View Preview")}`,
+						ariaLabel: localize('cc.verPreview', "View Preview"),
 						tooltip: localize('cc.verPreview.tooltip', "Open project preview"),
 						command: 'codecanvas.preview.open',
 					}, 'status.codecanvasPreviewButton', StatusbarAlignment.LEFT, 100);
@@ -1350,6 +1351,26 @@ registerWorkbenchContribution2(CodeCanvasTitleBarContribution.ID, CodeCanvasTitl
 registerWorkbenchContribution2(CodeCanvasStatusBarContribution.ID, CodeCanvasStatusBarContribution, WorkbenchPhase.BlockRestore);
 registerWorkbenchContribution2(CodeCanvasWebProjectContribution.ID, CodeCanvasWebProjectContribution, WorkbenchPhase.AfterRestored);
 registerWorkbenchContribution2(CodeCanvasPreviewButtonContribution.ID, CodeCanvasPreviewButtonContribution, WorkbenchPhase.AfterRestored);
+
+Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
+	id: 'codecanvas',
+	order: 100,
+	title: localize('codecanvas.configTitle', "CodeCanvas"),
+	type: 'object',
+	properties: {
+		'codecanvas.language': {
+			type: 'string',
+			enum: ['en', 'es'],
+			enumDescriptions: [
+				localize('codecanvas.language.en', "English"),
+				localize('codecanvas.language.es', "Spanish"),
+			],
+			default: 'en',
+			scope: ConfigurationScope.APPLICATION,
+			description: localize('codecanvas.language.description', "Display language for the CodeCanvas Design environment. English is fully supported; other languages fall back to English until translated."),
+		},
+	},
+});
 
 import './designView.js';
 // Design opens as a normal editor tab by default. Full-window mode is now opt-in: a button

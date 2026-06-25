@@ -5,16 +5,6 @@
 
 import './media/chatViewPane.css';
 import { AgentSelectorControl } from './agentSelectorControl.js';
-
-/**
- * Agent selector id → agent-host chat session type (`agent-host-<provider>`).
- * Claude/Codex are NOT here: they run via our CLI language-model (`claude-cli`/`codex-cli`)
- * in the local chat (the agent-host route depends on a GitHub Copilot login and hangs).
- * Copilot keeps the agent-host route; kimi has no backend → local chat fallback.
- */
-const AGENT_SESSION_TYPE: Record<string, string> = {
-	copilot: 'agent-host-copilotcli',
-};
 import { $, addDisposableListener, append, EventHelper, EventType, getWindow, setVisibility } from '../../../../../../base/browser/dom.js';
 import { StandardMouseEvent } from '../../../../../../base/browser/mouseEvent.js';
 import { Button } from '../../../../../../base/browser/ui/button/button.js';
@@ -81,6 +71,7 @@ import { IHostService } from '../../../../../services/host/browser/host.js';
 import { IPathService } from '../../../../../services/path/common/pathService.js';
 import { ITerminalService } from '../../../../terminal/browser/terminal.js';
 import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IDefaultAccountService } from '../../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { getAccountStatus, AGENT_LOGIN_COMMAND, AGENT_LOGOUT_COMMAND } from './ccAccountStatus.js';
 
 interface IChatViewPaneState extends Partial<IChatModelInputState> {
@@ -107,8 +98,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	private agentSelector: AgentSelectorControl | undefined;
 	/** Re-reads the active agent's account status and pushes it to the selector. */
 	private refreshAccountStatus: () => void = () => { };
-	/** Whether the user opened the history (sessions) view via the "Historial" button. */
-	private historialOpen = false;
+	/** Whether the user opened the history (sessions) view via the "History" button. */
+	private historyOpen = false;
 	private readonly chatViewLocationContext: IContextKey<ViewContainerLocation>;
 
 	private lastDimensions: { height: number; width: number } | undefined;
@@ -151,6 +142,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		@IFileService private readonly fileService: IFileService,
 		@IPathService private readonly pathService: IPathService,
 		@ITerminalService private readonly terminalService: ITerminalService,
+		@IDefaultAccountService private readonly defaultAccountService: IDefaultAccountService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -335,29 +327,19 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 
 		// Agent selector (Claude/Kimi/Codex/Copilot) — themes the panel by agent color.
 		const agentSelector = this.agentSelector = this._register(new AgentSelectorControl(parent, this.viewPaneContainer));
-		// Picking/changing an agent loads it into this panel. Copilot uses its agent-host session;
-		// Claude/Codex/Kimi run as a local chat so our CLI language-model handles the turn (a bare
-		// new-chat command keeps the previous agent-host target, which ignores the model picker).
-		const openAgentSession = (agentId: string) => {
-			const sessionType = AGENT_SESSION_TYPE[agentId];
-			if (sessionType) {
-				// Agent-host session types only register the in-place action (the sidebar/editor
-				// variants are extension-point only). 'sidebar' loads it into this panel.
-				this.commandService.executeCommand(`workbench.action.chat.openNewChatSessionInPlace.${sessionType}`, 'sidebar');
-			} else {
-				// Load the Local session in-place — the exact command the session-target picker runs
-				// for "Local". This flips the panel's target off agent-host so our CLI language-model
-				// (scoped via the model picker to claude-cli/codex-cli) handles the turn.
-				this.commandService.executeCommand('workbench.action.chat.openNewChatSessionInPlace.local', 'sidebar');
-			}
+		// Every selector entry uses the normal local chat session. In particular, Copilot must not
+		// be sent to `agent-host-copilotcli`: that is a separate Copilot CLI background-session
+		// integration and it replaces the standard GitHub Copilot model picker.
+		const openAgentSession = () => {
+			this.commandService.executeCommand('workbench.action.chat.openNewChatSessionInPlace.local', 'sidebar');
 		};
-		this._register(agentSelector.onNewChat(() => openAgentSession(agentSelector.currentAgent.id)));
-		this._register(agentSelector.onDidChangeAgent(agent => { openAgentSession(agent.id); this.refreshAccountStatus(); }));
+		this._register(agentSelector.onNewChat(openAgentSession));
+		this._register(agentSelector.onDidChangeAgent(() => { openAgentSession(); this.refreshAccountStatus(); }));
 
 		// Account status (linked/unlinked + email) for the active agent.
 		const refreshAccountStatus = this.refreshAccountStatus = async () => {
 			const home = this.pathService.userHome({ preferLocal: true });
-			const status = await getAccountStatus(agentSelector.currentAgent.id, this.fileService, home);
+			const status = await getAccountStatus(agentSelector.currentAgent.id, this.fileService, home, this.defaultAccountService);
 			agentSelector.setAccountStatus(status);
 		};
 		refreshAccountStatus();
@@ -365,6 +347,13 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		this._register(this.hostService.onDidChangeFocus(focused => { if (focused) { refreshAccountStatus(); } }));
 		// "Link now" → run the agent's login command in a fresh terminal, then re-check.
 		this._register(agentSelector.onLink(async () => {
+			if (agentSelector.currentAgent.id === 'copilot') {
+				// Run the first-party Copilot setup path. It performs GitHub OAuth, entitlement
+				// validation, and registers the account in VS Code's profile menu.
+				await this.commandService.executeCommand('workbench.action.chat.triggerSetupForceSignIn');
+				await refreshAccountStatus();
+				return;
+			}
 			const command = AGENT_LOGIN_COMMAND[agentSelector.currentAgent.id];
 			if (!command) {
 				return;
@@ -374,6 +363,12 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		}));
 		// Sign out → run the agent's logout command in a fresh terminal, then re-check.
 		this._register(agentSelector.onLogout(async () => {
+			if (agentSelector.currentAgent.id === 'copilot') {
+				// Use the same default-account service behind VS Code's account/profile sign-out.
+				await this.defaultAccountService.signOut();
+				await refreshAccountStatus();
+				return;
+			}
 			const command = AGENT_LOGOUT_COMMAND[agentSelector.currentAgent.id];
 			if (!command) {
 				return;
@@ -383,7 +378,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 			terminal.sendText(command, true);
 		}));
 		this._register(agentSelector.onHistory(() => {
-			this.historialOpen = !this.historialOpen;
+			this.historyOpen = !this.historyOpen;
 			this.updateSessionsControlVisibility();
 			this.relayout();
 		}));
@@ -551,8 +546,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		let newSessionsContainerVisible: boolean;
 		if (!this.configurationService.getValue<boolean>(ChatConfiguration.ChatViewSessionsEnabled)) {
 			newSessionsContainerVisible = false; // disabled in settings
-		} else if (!this.historialOpen) {
-			newSessionsContainerVisible = false; // only shown via the "Historial" button
+		} else if (!this.historyOpen) {
+			newSessionsContainerVisible = false; // only shown via the "History" button
 		} else {
 
 			// Sessions control: stacked

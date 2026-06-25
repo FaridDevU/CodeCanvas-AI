@@ -146,12 +146,12 @@ export const LayersTab = observer(() => {
                 className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center"
             >
                 <Icons.Layers className="h-8 w-8 text-foreground-secondary opacity-80" />
-                <p className="text-sm font-medium text-foreground-primary">Árbol de capas no disponible</p>
+                <p className="text-sm font-medium text-foreground-primary">Layer tree unavailable</p>
                 <p className="text-xs text-foreground-secondary">
-                    Los proyectos HTML todavía no muestran un árbol de capas aquí.
+                    HTML projects don't show a layer tree here yet.
                 </p>
                 <p className="text-xs text-foreground-tertiary">
-                    Haz clic en un elemento del lienzo para seleccionarlo y editarlo directamente.
+                    Click an element on the canvas to select and edit it directly.
                 </p>
             </div>
         );
