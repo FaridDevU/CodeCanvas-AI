@@ -356,6 +356,10 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				'node_modules/vsda/**' // retain copy of `vsda` in node_modules for internal use
 			], 'node_modules.asar'));
 
+		// CodeCanvas: ship the Design editor bundle next to `out` (resources/app/design-editor
+		// in the packaged app) so DesignEditorPane can load it at runtime.
+		const designEditor = gulp.src('resources/app/design-editor/**', { base: 'resources/app', dot: true });
+
 		const mergeStreams = [
 			packageJsonStream,
 			productJsonStream,
@@ -363,7 +367,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			api,
 			telemetry,
 			sources,
-			deps
+			deps,
+			designEditor
 		];
 		let all = es.merge(...mergeStreams);
 
@@ -522,9 +527,12 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 }
 
 function hasAuthenticodeSignature(filePath: string): Promise<boolean> {
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		const proc = cp.spawn('signtool.exe', ['verify', '/pa', filePath]);
-		proc.on('error', reject);
+		// signtool ships with the Windows SDK and is absent on unsigned/local builds.
+		// Treat a missing tool (ENOENT) as "no verifiable signature" so we skip the
+		// strip and let rcedit patch metadata — the win32 package still completes.
+		proc.on('error', () => resolve(false));
 		proc.on('exit', code => resolve(code === 0));
 	});
 }

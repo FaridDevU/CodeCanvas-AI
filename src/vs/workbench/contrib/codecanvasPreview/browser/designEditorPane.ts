@@ -10,6 +10,7 @@ import { localize } from '../../../../nls.js';
 import { EditorPane } from '../../../browser/parts/editor/editorPane.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
@@ -30,6 +31,7 @@ export class DesignEditorPane extends EditorPane {
 		@IStorageService storageService: IStorageService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IEnvironmentService private readonly environmentService: IEnvironmentService,
 	) {
 		super(DesignEditorPane.ID, group, telemetryService, themeService, storageService);
 	}
@@ -65,14 +67,21 @@ export class DesignEditorPane extends EditorPane {
 		if (!this.webviewElement) {
 			return;
 		}
-		// The bundle lives at <appRoot>/resources/app/design-editor, next to `out`, so we escape
-		// the file root with `vs/../../`.
+		// The bundle ships next to `out`, but the layout differs by build:
+		//   dev      -> <repo>/out  + <repo>/resources/app/design-editor
+		//   packaged -> <app>/resources/app/out + <app>/resources/app/design-editor
+		// In the packaged build the app root already IS resources/app, so the bundle sits
+		// directly beside `out`. Both paths escape the file root (which ends in /out/) with `vs/../../`.
 		const locale = this.configurationService.getValue<string>('codecanvas.language') || 'en';
-		const bundleUri = FileAccess.asBrowserUri('vs/../../resources/app/design-editor/index.html').with({ query: `v=${Date.now()}&locale=${locale}` });
+		const bundleUri = FileAccess.asBrowserUri(
+			this.environmentService.isBuilt
+				? 'vs/../../design-editor/index.html'
+				: 'vs/../../resources/app/design-editor/index.html'
+		).with({ query: `v=${Date.now()}&locale=${locale}` });
 		this.webviewElement.src = bundleUri.toString(true);
 	}
 
-	override layout(dimension: Dimension): void {
+	override layout(_dimension: Dimension): void {
 		// Layout is handled by the iframe
 	}
 }
