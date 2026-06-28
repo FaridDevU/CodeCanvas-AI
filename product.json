@@ -1,4 +1,8 @@
 {
+	"configurationDefaults": {
+		"chat.agentHost.enabled": false,
+		"workbench.welcomePage.experimentalOnboarding": false
+	},
 	"nameShort": "CodeCanvas AI",
 	"nameLong": "CodeCanvas AI",
 	"enableTelemetry": false,
