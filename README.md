@@ -11,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-1f6feb?style=flat-square)
 ![Built on](https://img.shields.io/badge/built%20on-VS%20Code%20OSS-444?style=flat-square)
 
-[**⬇ Download (alpha)**](https://github.com/FaridDevU/CodeCanvas-AI/releases) · [**Report a bug**](https://github.com/FaridDevU/CodeCanvas-AI/issues)
+[**Download (alpha)**](https://github.com/FaridDevU/CodeCanvas-AI/releases) · [**Report a bug**](https://github.com/FaridDevU/CodeCanvas-AI/issues)
 
 </div>
 
@@ -33,27 +33,27 @@ Design, build, and talk to an AI agent in the same window — no round-tripping 
 
 Everything below is captured from the real, compiled app — no mockups.
 
-### ✏️ Edit on the canvas
+### Edit on the canvas
 Select any element on the canvas, change its text, and the live preview updates instantly. No code, no rebuilds.
 
 <div align="center"><img src="docs/assets/edit-text.gif" alt="Edit text on the canvas" width="720" /></div>
 
-### 📱 Design for every screen
+### Design for every screen
 One project, every screen. Switch from desktop to phone in a single click and the canvas reflows into a real device frame — so you know exactly how it looks before you ship.
 
 <div align="center"><img src="docs/assets/device-switch.gif" alt="Switch device frames" width="720" /></div>
 
-### 🤖 AI that knows what you mean
+### AI that knows what you mean
 Pick an element, right-click, and send it straight to the AI — with its tag, its inline styles, and its source file already attached. Your assistant always knows exactly what you're pointing at.
 
 <div align="center"><img src="docs/assets/send-to-ai.gif" alt="Send an element to the AI with context" width="720" /></div>
 
-### 👁️ Live preview, side by side
+### Live preview, side by side
 Every change is live. Edit on the canvas and see the real, running page update in the same window — exactly what your users will get.
 
 <div align="center"><img src="docs/assets/live-preview.gif" alt="Live preview" width="720" /></div>
 
-### 🎚️ Inspect and tweak anything
+### Inspect and tweak anything
 Click any element to select it — a heading, a card, a button. Its full style panel is right there: font, size, color, spacing. Inspect and fine-tune in seconds.
 
 <div align="center"><img src="docs/assets/inspect-elements.gif" alt="Inspect element styles" width="720" /></div>
@@ -63,7 +63,7 @@ Click any element to select it — a heading, a card, a button. Its full style p
 ## Quickstart
 
 1. **Download** the installer from [Releases](https://github.com/FaridDevU/CodeCanvas-AI/releases) — `CodeCanvasAISetup.exe` (Windows x64).
-2. **Run it.** It's an unsigned alpha, so Windows SmartScreen will warn → **More info → Run anyway**. User-scoped install, no admin needed.
+2. **Run it.** It's an unsigned alpha, so Windows SmartScreen will warn — choose **More info**, then **Run anyway**. User-scoped install, no admin needed.
 3. **Open a folder** (an HTML project), then click **Design** in the activity bar to open the canvas.
 4. **Edit visually** on the canvas, and chat with the **Claude** agent docked on the right.
 
@@ -72,7 +72,7 @@ Click any element to select it — a heading, a card, a button. Its full style p
 ## Why CodeCanvas AI?
 
 - **Code is the source of truth** — the canvas edits your real files, not a throwaway mockup that drifts from the code.
-- **Design + build + AI in one window** — stop bouncing between a design tool and an editor.
+- **Design, build and AI in one window** — stop bouncing between a design tool and an editor.
 - **AI with real context** — every element you send carries its tag, styles, and source path, so the agent never guesses.
 - **Built on VS Code** — the full editor you already know, with a visual layer on top.
 
@@ -97,10 +97,10 @@ Requires Node 20+ and the repo's build dependencies. On Windows, `signtool.exe` 
 ```bash
 npm install
 
-# Build the app → ../VSCode-win32-x64/CodeCanvas AI.exe
+# Build the app -> ../VSCode-win32-x64/CodeCanvas AI.exe
 npm run gulp vscode-win32-x64-min
 
-# Build the installer → .build/win32-x64/user-setup/CodeCanvasAISetup.exe
+# Build the installer -> .build/win32-x64/user-setup/CodeCanvasAISetup.exe
 npm run gulp vscode-win32-x64-inno-updater
 npm run gulp vscode-win32-x64-user-setup
 ```
@@ -113,17 +113,18 @@ For day-to-day development of the workbench, use `npm run watch-client` and laun
 
 **Alpha.** Working today: the Design canvas (edit, device frames, inspect, live preview, write-back to source, undo) and the **Claude** AI agent.
 
-**Coming soon:**
-- [ ] Copilot, Codex and Kimi agents
-- [ ] Code signing (removes the SmartScreen warning)
-- [ ] macOS and Linux builds
-- [ ] Full localization (a few panels are still mixed-language)
+Coming soon:
+
+- Copilot, Codex and Kimi agents
+- Code signing (removes the SmartScreen warning)
+- macOS and Linux builds
+- Full localization (a few panels are still mixed-language)
 
 ---
 
 ## License
 
-Distributed under the [MIT License](LICENSE.txt). CodeCanvas AI is a fork of [VS Code OSS](https://github.com/microsoft/vscode) (© Microsoft, MIT).
+Distributed under the [MIT License](LICENSE.txt). CodeCanvas AI is a fork of [VS Code OSS](https://github.com/microsoft/vscode) (Microsoft, MIT).
 
 <div align="center">
 <sub>Built on the canvas. <a href="#codecanvas-ai">Back to top</a></sub>
