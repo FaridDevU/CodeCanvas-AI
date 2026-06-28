@@ -38,7 +38,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 
 /**
  * CLI-backed chat models that appear in the model picker alongside Copilot.
- * Each runs as a hidden PTY process. Start with Claude; Codex is the same shape.
+ * Each runs as a hidden child_process over stdio pipes (not a PTY). Start with Claude; Codex is the same shape.
  */
 const CLI_MODELS: readonly ICliModelDescriptor[] = [
 	{

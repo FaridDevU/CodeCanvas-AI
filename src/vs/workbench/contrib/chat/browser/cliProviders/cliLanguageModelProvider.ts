@@ -25,8 +25,8 @@ import {
 
 /**
  * Describes a CLI-backed chat model (Claude, Codex, ...). The model is run as a
- * hidden, isolated terminal process (PTY headless) — never attached to a visible
- * terminal instance — and its stdout is streamed back as chat text.
+ * hidden child_process driven over stdio pipes (not a PTY/TTY) — never attached to
+ * a visible terminal instance — and its stdout is streamed back as chat text.
  */
 /** Setting that controls the CLI permission level (how freely the agent may act). */
 export const PERMISSION_MODE_SETTING = 'codecanvas.design.permissionMode';
@@ -72,7 +72,8 @@ export interface ICliModelDescriptor {
 }
 
 /**
- * Language model provider backed by a CLI run in a headless PTY. Implements the
+ * Language model provider backed by a CLI run as a hidden child_process over stdio
+ * pipes (not a PTY). Implements the
  * same {@link ILanguageModelChatProvider} surface as the agent-host provider, so
  * the model shows up in the existing chat model picker with no UI changes.
  */
