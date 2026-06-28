@@ -1,0 +1,4 @@
+# Strip non-win32 native binaries. patchWin32Dependencies runs rcedit, which only
+# loads Windows PE files; darwin/linux .node files break the build and aren't used on win32.
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/*-darwin/**
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/*-linux/**

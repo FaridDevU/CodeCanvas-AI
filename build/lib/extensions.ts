@@ -473,7 +473,10 @@ export function packageCopilotExtensionStream(disableMangle: boolean): Stream {
 	);
 
 	const productionDependencies = getProductionDependencies('extensions/copilot');
-	const dependenciesSrc = productionDependencies.map(d => path.relative(root, d)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]).flat();
+	// shims.txt is a copilot runtime artifact (ensureShims) that postinstall deletes mid-build;
+	// exclude it so the dep glob doesn't lstat a file that races away. The packaged shim is
+	// written separately by prepareBuiltInCopilotRipgrepShim.
+	const dependenciesSrc = productionDependencies.map(d => path.relative(root, d)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`, `!${d}/**/shims.txt`]).flat();
 
 	return es.merge(
 		localExtensionsStream,
