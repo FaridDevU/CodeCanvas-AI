@@ -11,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-1f6feb?style=flat-square)
 ![Built on](https://img.shields.io/badge/built%20on-VS%20Code%20OSS-444?style=flat-square)
 
-[**Download (alpha)**](https://github.com/FaridDevU/CodeCanvas-AI/releases) · [**Report a bug**](https://github.com/FaridDevU/CodeCanvas-AI/issues)
+[**Website**](https://getcodecanvas.dev) · [**Download (alpha)**](https://github.com/FaridDevU/CodeCanvas-AI/releases) · [**Report a bug**](https://github.com/FaridDevU/CodeCanvas-AI/issues)
 
 </div>
 
